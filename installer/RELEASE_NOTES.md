@@ -24,7 +24,13 @@ sudo sh vitals-@VERSION@-linux-amd64.run
 
 ### Windows 10 and 11
 
-Download **`vitals-setup-@VERSION@.exe`** and run it. The setup shows the pairing QR code at the end.
+Paste into PowerShell:
+
+```powershell
+irm https://github.com/theallmyti/Vitals/releases/latest/download/install.ps1 | iex
+```
+
+It downloads the setup, checks it against `SHA256SUMS` and starts it; Windows asks for admin rights. The setup ends on the pairing **QR code**. Or download **`vitals-setup-@VERSION@.exe`** and run it yourself.
 
 ### Android
 
@@ -38,7 +44,7 @@ Download **`vitals-app-@VERSION@.apk`** on the phone and open it. Allow "install
 | `vitals-@VERSION@-linux-amd64.run` | Linux installer, x86-64 PCs |
 | `vitals-@VERSION@-linux-arm64.run` | Linux installer, ARM64 (Raspberry Pi 4/5 and similar) |
 | `vitals-app-@VERSION@.apk` | Android app |
-| `install.sh` | The Linux one-line installer above |
+| `install.sh`, `install.ps1` | The one-line installers above (Linux, Windows) |
 | `vitals-uninstall.exe`, `vitals-uninstall.sh` | Uninstallers (Windows, Linux) |
 | `SHA256SUMS` | Checksums, to confirm a download isn't corrupted or tampered with. Not something you install. |
 | `vitals.exe`, `vitals-linux-*`, `nexus.exe`, `nexus-linux-*` | Used by automatic updates. Don't download these. |

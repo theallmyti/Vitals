@@ -215,10 +215,11 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: One-line Linux installer and release notes
+      - name: One-line installers and release notes
         run: |
           # install.sh is what `curl -fsSL .../releases/latest/download/install.sh | sh` fetches.
           cp installer/linux/get.sh dist/install.sh
+          cp installer/get.ps1 dist/install.ps1   # irm .../install.ps1 | iex
           sed "s/@VERSION@/$VERSION/g" installer/RELEASE_NOTES.md > "$RUNNER_TEMP/notes.md"
 
       - name: SHA256SUMS
