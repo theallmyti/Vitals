@@ -115,8 +115,8 @@ fun PairingProgressScreen(
                         progress = 0.6f
                         awaitingConfirm = true
                     }
-                    "confirmed" -> errorMessage = "This code was already used. Run 'nexus pair' on the PC for a new one."
-                    else -> errorMessage = "Pairing code expired. Run 'nexus pair' on the PC for a new code."
+                    "confirmed" -> errorMessage = "This code was already used. Run 'vitals pair' on the PC for a new one."
+                    else -> errorMessage = "Pairing code expired. Run 'vitals pair' on the PC for a new code."
                 }
             }
         }
@@ -435,7 +435,7 @@ private fun displayOs(raw: String): String = when {
 
 private fun friendlyPairingError(errMsg: String): String = when {
     errMsg.contains("expired", ignoreCase = true) || errMsg.contains("not found", ignoreCase = true) ->
-        "Pairing code expired or not found. Run 'nexus pair' on PC for a new code."
+        "Pairing code expired or not found. Run 'vitals pair' on PC for a new code."
     errMsg.contains("already paired", ignoreCase = true) -> "This device is already paired to another account."
     errMsg.contains("Too many", ignoreCase = true) -> "Too many attempts. Wait 10 minutes and try again."
     errMsg.contains("signed out", ignoreCase = true) -> "Your session expired. Please log in again."

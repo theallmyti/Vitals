@@ -1,14 +1,14 @@
 # run-and-profile.ps1
-# Runs nexus and nexus tray, samples RAM & CPU every 10 seconds for 5 minutes (30 samples).
+# Runs vitals and vitals tray, samples RAM & CPU every 10 seconds for 5 minutes (30 samples).
 
-$bin = "D:\Random project\MS\agent\target\release\nexus.exe"
+$bin = "D:\Random project\MS\agent\target\release\vitals.exe"
 $config = "C:\ProgramData\PCMonitor\config.toml"
 
-Write-Host "Starting Nexus Agent..."
+Write-Host "Starting Vitals Agent..."
 $agentProc = Start-Process -FilePath $bin -ArgumentList "`"$config`"" -PassThru
 Write-Host "Started Agent PID: $($agentProc.Id)"
 
-Write-Host "Starting Nexus Tray..."
+Write-Host "Starting Vitals Tray..."
 $trayProc = Start-Process -FilePath $bin -ArgumentList "tray" -PassThru
 Write-Host "Started Tray PID: $($trayProc.Id)"
 

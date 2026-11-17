@@ -5,7 +5,7 @@ Guidelines and procedures for diagnosing, logging, and triaging system errors ac
 ---
 
 ## 1. Rust Agent Logging (`agent/src/logging.rs`)
-- **Format**: Rotating log files in `%LOCALAPPDATA%\Nexus\logs\` (Windows) or `~/.local/share/nexus/logs/` (Linux).
+- **Format**: Rotating log files in `%LOCALAPPDATA%\Vitals\logs\` (Windows) or `~/.local/share/vitals/logs/` (Linux).
 - **Levels**: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`.
 - **Diagnostic output**: Agent console and tray icon expose connection health and error reports.
 

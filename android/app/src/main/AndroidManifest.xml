@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- In-app updates (update/AppUpdater.kt): install the newer APK from this app's releases. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+: once Vitals installed itself, later updates can skip the confirm screen. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
@@ -27,11 +31,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- 1. Custom Deep Link Scheme (nexus://pair?code=ABC234) -->
+            <!-- 1. Custom Deep Link Scheme (vitals://pair?code=ABC234). nexus:// is the pre-rename
+                 scheme, still used by the pairing page and older agents. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vitals" android:host="pair" />
                 <data android:scheme="nexus" android:host="pair" />
             </intent-filter>
 
@@ -48,7 +54,7 @@
         </activity>
 
         <service
-            android:name=".notification.NexusFirebaseMessagingService"
+            android:name=".notification.VitalsFirebaseMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
@@ -57,7 +63,7 @@
         <receiver
             android:name=".widget.DevicesWidget"
             android:exported="true"
-            android:label="Nexus devices">
+            android:label="Vitals devices">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -65,6 +71,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_devices_info" />
         </receiver>
+
+        <!-- Result of an in-app update install session (update/InstallResultReceiver.kt). -->
+        <receiver
+            android:name=".update.InstallResultReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

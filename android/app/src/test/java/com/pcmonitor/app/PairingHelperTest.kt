@@ -18,16 +18,29 @@ class PairingHelperTest {
 
     @Test
     fun normalizeCode_extractsFromDeepLink() {
-        val deepLink = "nexus://pair?code=XYZ789"
+        val deepLink = "vitals://pair?code=XYZ789"
         val code = PairingHelper.normalizeCode(deepLink)
         assertEquals("XYZ789", code)
         assertTrue(PairingHelper.isValidCode(code))
     }
 
     @Test
-    fun normalizeCode_stripsNexusPrefix() {
-        val raw = "NEXUS-PAIR:DEF456"
+    fun normalizeCode_stripsVitalsPrefix() {
+        val raw = "VITALS-PAIR:DEF456"
         val code = PairingHelper.normalizeCode(raw)
+        assertEquals("DEF456", code)
+        assertTrue(PairingHelper.isValidCode(code))
+    }
+
+    @Test
+    fun normalizeCode_extractsFromLegacyNexusDeepLink() {
+        val code = PairingHelper.normalizeCode("nexus://pair?code=XYZ789")
+        assertEquals("XYZ789", code)
+    }
+
+    @Test
+    fun normalizeCode_stripsLegacyNexusPrefix() {
+        val code = PairingHelper.normalizeCode("NEXUS-PAIR:DEF456")
         assertEquals("DEF456", code)
         assertTrue(PairingHelper.isValidCode(code))
     }

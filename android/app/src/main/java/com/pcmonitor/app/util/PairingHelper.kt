@@ -6,8 +6,8 @@ object PairingHelper {
     /**
      * Extracts and normalizes the 6-character code from:
      * - Web URL: "https://tidy-newt-65.convex.site/pair?code=ABC234"
-     * - Deep Link: "nexus://pair?code=ABC234"
-     * - Legacy prefix: "NEXUS-PAIR:ABC234" or "PCMONITOR-PAIR:ABC234"
+     * - Deep Link: "vitals://pair?code=ABC234" (or the pre-rename "nexus://pair?code=ABC234")
+     * - Legacy prefix: "VITALS-PAIR:ABC234", "NEXUS-PAIR:ABC234" or "PCMONITOR-PAIR:ABC234"
      * - Plain text: "ABC 234" or "abc-234"
      */
     fun normalizeCode(rawInput: String): String {
@@ -23,6 +23,7 @@ object PairingHelper {
 
         // 2. Strip legacy prefixes, whitespace, and hyphens
         return input
+            .replace("VITALS-PAIR:", "", ignoreCase = true)
             .replace("NEXUS-PAIR:", "", ignoreCase = true)
             .replace("PCMONITOR-PAIR:", "", ignoreCase = true)
             .replace(Regex("[\\s-]"), "")

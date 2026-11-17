@@ -1,9 +1,9 @@
-# Legal & Privacy Overview — Nexus
+# Legal & Privacy Overview — Vitals
 
 **Maintainers:** Aditya Prasad, Tirth Patel, Pratham Vasava (Vadodara, Gujarat, India)
 **Code license:** [MIT License](LICENSE)
-**Repository:** https://github.com/theallmyti/Nexus
-**Privacy and grievance contact:** contact.nexus07@gmail.com
+**Repository:** https://github.com/theallmyti/Vitals
+**Privacy and grievance contact:** contact@vitals.dpdns.org
 **Last updated:** 11 November 2026
 
 This page is a summary. The full documents are binding:
@@ -39,7 +39,7 @@ This page is a summary. The full documents are binding:
 The web dashboard sets no cookies and has no trackers; it keeps one strictly necessary `localStorage` item (`pcm-session`). The Android app includes Google Analytics for Firebase.
 
 ## 4. Licenses and attributions
-- **Nexus source code:** MIT License © 2026 Aditya Prasad, Tirth Patel, Pratham Vasava.
+- **Vitals source code:** MIT License © 2026 Aditya Prasad, Tirth Patel, Pratham Vasava.
 - **PawnIO modules** (optional Windows driver, by namazso): LGPL-2.1. The installer ships the license as `COPYING-PawnIO-Modules.txt`.
 - **Third-party libraries:** the agent, dashboard and Android app use open-source libraries under their own licenses (mostly MIT, Apache-2.0, BSD, ISC, Zlib and Unicode-3.0, plus MPL-2.0 for `imbl` via the Convex Rust client). Their license texts are listed in each package manifest (`agent/Cargo.lock`, `dashboard/package.json`, `android/app/build.gradle.kts`); a generated `THIRD_PARTY_NOTICES` file is planned for release builds.
 

@@ -69,7 +69,7 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Join Nexus",
+                text = "Join Vitals",
                 fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,

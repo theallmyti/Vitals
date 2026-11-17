@@ -23,6 +23,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.pcmonitor.app.navigation.PCMonitorNavGraph
 import com.pcmonitor.app.notification.NotificationHelper
 import com.pcmonitor.app.ui.theme.PCMonitorTheme
+import com.pcmonitor.app.update.AppUpdater
+import com.pcmonitor.app.update.UpdateDialog
 import com.pcmonitor.app.util.PairingHelper
 
 class MainActivity : ComponentActivity() {
@@ -64,6 +66,7 @@ class MainActivity : ComponentActivity() {
                         initialPairingCode = incomingPairingCode.value,
                         onPairingCodeConsumed = { incomingPairingCode.value = null }
                     )
+                    UpdateDialog()
                 }
             }
         }
@@ -75,6 +78,8 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         val app = application as PCMonitorApplication
         lifecycleScope.launch { app.deviceRepository.startMockSimulation() }
+        // Each time the app comes to the front: is there a newer published build?
+        lifecycleScope.launch { AppUpdater.check(this@MainActivity) }
     }
 
     override fun onStop() {

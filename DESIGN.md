@@ -1,5 +1,5 @@
 ---
-name: Nexus Retro-Terminal & Hardware Telemetry
+name: Vitals Retro-Terminal & Hardware Telemetry
 description: Authentic 8-bit CRT arcade aesthetic engineered for real-time personal fleet monitoring
 colors:
   bg-deep-navy: "#0F1B2E"
@@ -101,16 +101,16 @@ components:
     padding: "8px 16px"
 ---
 
-# Nexus UI Design System Specification (`DESIGN.md`)
+# Vitals UI Design System Specification (`DESIGN.md`)
 
-> **Normative Reference**: All UI screens, composables, color references, and typographic hierarchy across the **Nexus** fleet monitoring Android client (Kotlin + Jetpack Compose) MUST strictly adhere to the tokens and architectural standards documented below.
+> **Normative Reference**: All UI screens, composables, color references, and typographic hierarchy across the **Vitals** fleet monitoring Android client (Kotlin + Jetpack Compose) MUST strictly adhere to the tokens and architectural standards documented below.
 
 ---
 
 ## 1. Overview
 
 ### Creative North Star: *The 8-Bit Cyber-Terminal*
-Nexus is a hardware telemetry platform designed for personal computer fleets (Windows workstations, Linux servers, and Raspberry Pis). The design language synthesizes the nostalgic mechanical charm of **1980s arcade CRT terminals** with the **high-density data requirements of modern sysadmin dashboards**.
+Vitals is a hardware telemetry platform designed for personal computer fleets (Windows workstations, Linux servers, and Raspberry Pis). The design language synthesizes the nostalgic mechanical charm of **1980s arcade CRT terminals** with the **high-density data requirements of modern sysadmin dashboards**.
 
 ```mermaid
 flowchart LR
@@ -193,7 +193,7 @@ flowchart TD
 
 ### Dual-Engine Typography System
 
-Nexus pairs **Press Start 2P** (bitmap aesthetic) with **System Sans / Inter** (high legibility):
+Vitals pairs **Press Start 2P** (bitmap aesthetic) with **System Sans / Inter** (high legibility):
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -272,7 +272,7 @@ flowchart TD
 ## 5. Elevation & Depth
 
 ### The Zero-Blur Principle
-In traditional modern UI design, depth is expressed through fuzzy Gaussian drop shadows. In the **Nexus 8-Bit Retro** design system:
+In traditional modern UI design, depth is expressed through fuzzy Gaussian drop shadows. In the **Vitals 8-Bit Retro** design system:
 
 > [!IMPORTANT]
 > **Gaussian drop shadows are strictly prohibited.** Depth is achieved exclusively through **color contrast layering**, **hard pixel borders**, and **inset highlight bevels**.

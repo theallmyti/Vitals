@@ -1,26 +1,26 @@
-# Nexus Linux Installer & Service
+# Vitals Linux Installer & Service
 
-Production installer and hardened systemd service for the Nexus Hardware Monitoring Agent on Linux (`x86_64` and `aarch64` / ARM64).
+Production installer and hardened systemd service for the Vitals Hardware Monitoring Agent on Linux (`x86_64` and `aarch64` / ARM64).
 
 ## Quick Install
 
 ```bash
 # Standalone run package
-sudo sh dist/nexus-0.2.5-linux-x86_64.run
+sudo sh dist/vitals-<version>-linux-amd64.run   # ARM64: ...-linux-arm64.run
 # Or using install.sh directly
-sudo sh installer/linux/install.sh [path/to/nexus]
+sudo sh installer/linux/install.sh [path/to/vitals]
 ```
 
 ## What `install.sh` Does
 
-1. **Binary Placement**: Copies the static musl binary to `/opt/nexus/nexus` (mode 755).
-2. **Terminal Command Symlink**: Creates `/usr/local/bin/nexus -> /opt/nexus/nexus` so `nexus` commands run in any shell without specifying the full path.
-3. **Secret Security**: Generates `/etc/nexus/config.toml` with `chmod 600` (root-only read/write) to ensure the 256-bit device secret cannot be read by unprivileged users.
-4. **Permissive IPC**: Pre-initializes `/etc/nexus/control.json` and `/etc/nexus/status.json` with `chmod 666` so standard users can inspect status and pause/resume metrics collection from user terminals without needing `sudo`.
+1. **Binary Placement**: Copies the static musl binary to `/opt/vitals/vitals` (mode 755).
+2. **Terminal Command Symlink**: Creates `/usr/local/bin/vitals -> /opt/vitals/vitals` so `vitals` commands run in any shell without specifying the full path.
+3. **Secret Security**: Generates `/etc/vitals/config.toml` with `chmod 600` (root-only read/write) to ensure the 256-bit device secret cannot be read by unprivileged users.
+4. **Permissive IPC**: Pre-initializes `/etc/vitals/control.json` and `/etc/vitals/status.json` with `chmod 666` so standard users can inspect status and pause/resume metrics collection from user terminals without needing `sudo`.
 5. **Interactive Pairing**: Displays an ASCII QR code and 6-character pairing code in the terminal to pair with your mobile app or web dashboard.
-6. **Hardened systemd Service**: Deploys and enables `nexus.service`.
+6. **Hardened systemd Service**: Deploys and enables `vitals.service`.
 
-## Security Sandboxing (`nexus.service`)
+## Security Sandboxing (`vitals.service`)
 
 The systemd service enforces strict process isolation:
 
@@ -29,7 +29,7 @@ The systemd service enforces strict process isolation:
 | `NoNewPrivileges=yes` | Disallows gaining new privileges via setuid/setgid binaries |
 | `ProtectHome=read-only` | Prevents modifying `/home` or `/root` user directories |
 | `ProtectSystem=full` | Mounts `/usr`, `/boot`, and `/etc` read-only for the agent |
-| `ReadWritePaths=/etc/nexus` | Explicit write-whitelist restricted only to `/etc/nexus` |
+| `ReadWritePaths=/etc/vitals` | Explicit write-whitelist restricted only to `/etc/vitals` |
 | `PrivateTmp=yes` | Isolated `/tmp` and `/var/tmp` directory |
 | `ProtectControlGroups=yes` | Read-only control groups hierarchy |
 | `ProtectKernelModules=yes` | Prevents kernel module loading/unloading |
@@ -40,37 +40,37 @@ The systemd service enforces strict process isolation:
 
 ## CLI Terminal Commands
 
-Once installed, standard users and administrators can manage Nexus from the command line:
+Once installed, standard users and administrators can manage Vitals from the command line:
 
 ```bash
 # Show live agent status, CPU/RAM %, temperature, and backend link
-nexus status
+vitals status
 
 # Temporarily pause metrics collection (default 24h or specify minutes)
-nexus pause 30
+vitals pause 30
 
 # Resume live metrics collection
-nexus resume
+vitals resume
 
 # Restart the background service (via systemctl)
-nexus restart
+vitals restart
 
-# Pair this machine with your Nexus account
-nexus pair
+# Pair this machine with your Vitals account
+vitals pair
 
-# Remove device secret and unlink from Nexus
-nexus unpair
+# Remove device secret and unlink from Vitals
+vitals unpair
 
 # Inspect detected hardware sensors
-nexus sensors
+vitals sensors
 
 # View command help
-nexus help
+vitals help
 ```
 
 ## Uninstallation
 
 ```bash
-sudo sh /opt/nexus/uninstall.sh
+sudo sh /opt/vitals/uninstall.sh
 ```
-This safely disables the systemd service, unpairs the device from the online backend, deletes `/usr/local/bin/nexus`, and purges `/opt/nexus` and `/etc/nexus`.
+This safely disables the systemd service, unpairs the device from the online backend, deletes `/usr/local/bin/vitals`, and purges `/opt/vitals` and `/etc/vitals`.

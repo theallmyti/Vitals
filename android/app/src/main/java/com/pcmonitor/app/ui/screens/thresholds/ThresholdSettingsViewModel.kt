@@ -138,7 +138,7 @@ class ThresholdSettingsViewModel(
                 }.all { it }
             }
             saveFeedback = when {
-                !synced || !drivesSynced -> "Saved on this phone, but couldn't reach Nexus. Alerts still use the old values; try again when online."
+                !synced || !drivesSynced -> "Saved on this phone, but couldn't reach Vitals. Alerts still use the old values; try again when online."
                 devId == null -> "Global thresholds saved & synced!"
                 else -> "Device thresholds saved & synced!"
             }

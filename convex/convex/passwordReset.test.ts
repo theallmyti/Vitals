@@ -84,6 +84,13 @@ test("at most 3 reset emails per address per hour; misconfigured email fails cle
   await expect(t.action(api.auth.requestPasswordReset, { email: EMAIL })).rejects.toThrow(/Too many reset emails/);
   expect(sentEmails).toHaveLength(3);
 
-  delete process.env.CF_EMAIL_API_TOKEN;
+  delete process.env.RESEND_API_KEY;
   await expect(t.action(api.auth.requestPasswordReset, { email: "x@example.com" })).rejects.toThrow(/isn't set up/);
+
+  // Provider rejects the key: a plain retry message, never Resend's reason or the key itself.
+  process.env.RESEND_API_KEY = "re_revoked_key";
+  await t.action(api.auth.signUp, { turnstileToken: "test-token", email: "tirth@example.com", password: "a password" });
+  const failure = t.action(api.auth.requestPasswordReset, { email: "tirth@example.com" });
+  await expect(failure).rejects.toThrow(/Couldn't send the email right now/);
+  await expect(failure).rejects.not.toThrow(/re_revoked_key|API key is invalid/);
 });

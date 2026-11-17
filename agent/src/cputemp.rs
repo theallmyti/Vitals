@@ -58,7 +58,10 @@ pub fn ryzen_core_temps(version: u64, words: &[u64], cores: usize) -> Option<Vec
             Some(f64::from(f32::from_le_bytes([b[0], b[1], b[2], b[3]])))
         })
         .collect::<Option<Vec<f64>>>()?;
-    temps.iter().all(|t| (1.0..=125.0).contains(t)).then_some(temps)
+    temps
+        .iter()
+        .all(|t| (1.0..=125.0).contains(t))
+        .then_some(temps)
 }
 
 /// Spread per-core values over logical processors. Windows numbers SMT siblings next to each
@@ -378,26 +381,46 @@ mod imp {
             let lib = unsafe { Library::new(pawnio_lib()?) }.map_err(|e| e.to_string())?;
             let (open, load, exec, close) = unsafe {
                 (
-                    *lib.get::<OpenFn>(b"pawnio_open").map_err(|e| e.to_string())?,
-                    *lib.get::<LoadFn>(b"pawnio_load").map_err(|e| e.to_string())?,
-                    *lib.get::<ExecFn>(b"pawnio_execute").map_err(|e| e.to_string())?,
-                    *lib.get::<CloseFn>(b"pawnio_close").map_err(|e| e.to_string())?,
+                    *lib.get::<OpenFn>(b"pawnio_open")
+                        .map_err(|e| e.to_string())?,
+                    *lib.get::<LoadFn>(b"pawnio_load")
+                        .map_err(|e| e.to_string())?,
+                    *lib.get::<ExecFn>(b"pawnio_execute")
+                        .map_err(|e| e.to_string())?,
+                    *lib.get::<CloseFn>(b"pawnio_close")
+                        .map_err(|e| e.to_string())?,
                 )
             };
             let mut handle: Handle = std::ptr::null_mut();
             check(unsafe { open(&mut handle) }, "pawnio_open")?;
-            let name: Vec<u16> = r"Global\Access_PCI".encode_utf16().chain(std::iter::once(0)).collect();
+            let name: Vec<u16> = r"Global\Access_PCI"
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let mutex = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
-            let mut smu = Smu { _lib: lib, handle, exec, close, mutex, version: 0 };
+            let mut smu = Smu {
+                _lib: lib,
+                handle,
+                exec,
+                close,
+                mutex,
+                version: 0,
+            };
             let blob = std::fs::read(module_dir().join("RyzenSMU.bin"))
                 .map_err(|e| format!("module RyzenSMU.bin missing ({e})"))?;
-            check(unsafe { load(smu.handle, blob.as_ptr(), blob.len()) }, "pawnio_load RyzenSMU")?;
+            check(
+                unsafe { load(smu.handle, blob.as_ptr(), blob.len()) },
+                "pawnio_load RyzenSMU",
+            )?;
             let mut out = [0u64; 2];
             smu.locked(|s| s.call("ioctl_resolve_pm_table", &[], &mut out))
                 .ok_or("SMU busy")??;
             smu.version = out[0];
             if ryzen_core_temp_offset(smu.version).is_none() {
-                return Err(format!("metrics table version 0x{:X} not known", smu.version));
+                return Err(format!(
+                    "metrics table version 0x{:X} not known",
+                    smu.version
+                ));
             }
             Ok(smu)
         }
@@ -511,7 +534,10 @@ mod tests {
 
     #[test]
     fn spread_over_logical_processors() {
-        assert_eq!(per_logical(&[50.0, 60.0], 4), Some(vec![50.0, 50.0, 60.0, 60.0]));
+        assert_eq!(
+            per_logical(&[50.0, 60.0], 4),
+            Some(vec![50.0, 50.0, 60.0, 60.0])
+        );
         assert_eq!(per_logical(&[50.0, 60.0], 2), Some(vec![50.0, 60.0]));
         assert_eq!(per_logical(&[50.0, 60.0], 3), None);
     }

@@ -1,21 +1,21 @@
-; Nexus agent installer (Inno Setup 6).
-; Build: see installer/README.md. Output: dist\nexus-setup-<version>.exe
+; Vitals agent installer (Inno Setup 6).
+; Build: see installer/README.md. Output: dist\vitals-setup-<version>.exe
 ;
 ; Install (docs/Architecture.md §2.3a):
 ; - Asks for admin (UAC) like any installer; any local fixed drive works as the install folder
 ; - Locks the install folder to SYSTEM + Administrators (the service runs as LocalSystem)
 ; - Optional: installs the official PawnIO driver for CPU temperature (full mode, F8)
-; - Writes %ProgramData%\Nexus\config.toml (SYSTEM + Administrators only, docs/Security.md §6)
+; - Writes %ProgramData%\Vitals\config.toml (SYSTEM + Administrators only, docs/Security.md §6)
 ; - "Pair this computer" page: QR code image, code, countdown; the owner scans it on the site/app
 ;   (docs/Flow.md §3). A new code appears automatically when one expires.
-; - Creates the "NexusAgent" Windows service (restarted after a crash, NFR-06) and starts it
+; - Creates the "VitalsAgent" Windows service (restarted after a crash, NFR-06) and starts it
 ;   once pairing is done or skipped
-; Uninstall: stops and deletes the service, removes the device and its history from Nexus,
+; Uninstall: stops and deletes the service, removes the device and its history from Vitals,
 ; removes PawnIO (silently if this installer added it, otherwise after asking), deletes all files.
 
-#define AppName "Nexus Agent"
-#define AppVersion "0.2.5"
-#define ServiceName "NexusAgent"
+#define AppName "Vitals Agent"
+#define AppVersion "1.0.0"
+#define ServiceName "VitalsAgent"
 ; The Convex URL is kept out of the repo: installer/convex-url.txt (git-ignored, one line).
 ; Test builds: ISCC /DChannel=dev reads installer/convex-url-dev.txt and adds "-dev" to the name.
 #ifdef Channel
@@ -34,46 +34,53 @@
 #if Pos(".convex.cloud", ConvexUrl) == 0
   #error installer/convex-url.txt must hold a Convex URL like https://<deployment>.convex.cloud
 #endif
-#define StateKey "SOFTWARE\Nexus"
+#define StateKey "SOFTWARE\Vitals"
+; Before the rename the app was "Nexus" (and before that "PC Monitor"). An upgrade moves the
+; Nexus install over: service, data folder (device secret), install folder, PATH, shortcuts.
+#define LegacyServiceName "NexusAgent"
+#define LegacyStateKey "SOFTWARE\Nexus"
 
 [Setup]
+; Same AppId as the Nexus installer: an upgrade replaces its uninstall entry instead of adding a
+; second one (whose uninstaller would unpair the shared device secret).
 AppId={{F9FF55E1-801A-4E78-96FA-550A8B46C103}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=Aditya Prasad, Tirth Patel, Pratham Vasava
-AppPublisherURL=https://github.com/theallmyti/Nexus
-DefaultDirName={autopf}\Nexus
-DefaultGroupName=Nexus
+AppPublisherURL=https://github.com/theallmyti/Vitals
+DefaultDirName={autopf}\Vitals
+; Upgrades reuse the previous folder, except a Nexus one (see UseVitalsDirOverNexus).
+DefaultGroupName=Vitals
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
-OutputBaseFilename=nexus-setup-{#AppVersion}{#OutSuffix}
+OutputBaseFilename=vitals-setup-{#AppVersion}{#OutSuffix}
 Compression=lzma2
 SolidCompression=yes
 ; No licence page: consent is a checkbox on the first screen (links open the full documents).
 DisableWelcomePage=no
 DisableReadyPage=yes
 WizardStyle=modern
-; Nexus theme: pixel-art side image and logo (installer/assets/make_wizard_art.py), 100/150/200 % DPI
+; Vitals theme: pixel-art side image and logo (installer/assets/make_wizard_art.py), 100/150/200 % DPI
 WizardImageFile=assets\wizard-image-100.bmp,assets\wizard-image-125.bmp,assets\wizard-image-150.bmp,assets\wizard-image-175.bmp,assets\wizard-image-200.bmp
 WizardSmallImageFile=assets\wizard-small-100.bmp,assets\wizard-small-125.bmp,assets\wizard-small-150.bmp,assets\wizard-small-175.bmp,assets\wizard-small-200.bmp
 ; Fill the whole side panel (no white frame); any leftover edge is navy, not white.
 WizardImageStretch=yes
 WizardImageBackColor=$2E1B0F
 UninstallDisplayName={#AppName}
-UninstallDisplayIcon={app}\nexus.exe
+UninstallDisplayIcon={app}\vitals.exe
 SetupLogging=yes
 CloseApplications=no
 
 [Tasks]
 Name: "cputemp"; Description: "Show CPU temperature (installs the PawnIO driver; the agent then runs with admin rights)"
-Name: "tray"; Description: "Start Nexus in System Tray on login (uncheck to save ~15 MB RAM; control via terminal 'nexus' commands)"; Flags: checkedonce
-Name: "addtopath"; Description: "Add Nexus to system PATH (allows running 'nexus' directly in Command Prompt or PowerShell)"; Flags: checkedonce
+Name: "tray"; Description: "Start Vitals in System Tray on login (uncheck to save ~15 MB RAM; control via terminal 'vitals' commands)"; Flags: checkedonce
+Name: "addtopath"; Description: "Add Vitals to system PATH (allows running 'vitals' directly in Command Prompt or PowerShell)"; Flags: checkedonce
 
 [Files]
-Source: "..\agent\target\release\nexus.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\agent\target\release\vitals.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"
 Source: "LEGAL_AGREEMENT.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "LEGAL_AGREEMENT.rtf"; DestDir: "{app}\docs"; Flags: ignoreversion
@@ -95,42 +102,64 @@ Source: "vendor\pawnio\COPYING"; DestDir: "{app}\pawnio"; DestName: "COPYING-Paw
 Source: "vendor\pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Tasks: cputemp; Flags: deleteafterinstall
 
 [Messages]
-WelcomeLabel1=Install Nexus
-WelcomeLabel2=Keep an eye on this computer's temperatures, memory and alerts from your phone.%n%nNexus runs quietly in the background and uses very little memory.
-FinishedHeadingLabel=Nexus is ready
-FinishedLabel=The agent is running in the background. Open the Nexus app on your phone to see this computer.
-FinishedLabelNoIcons=The agent is running in the background. Open the Nexus app on your phone to see this computer.
+WelcomeLabel1=Install Vitals
+WelcomeLabel2=Keep an eye on this computer's temperatures, memory and alerts from your phone.%n%nVitals runs quietly in the background and uses very little memory.
+FinishedHeadingLabel=Vitals is ready
+FinishedLabel=The agent is running in the background. Open the Vitals app on your phone to see this computer.
+FinishedLabelNoIcons=The agent is running in the background. Open the Vitals app on your phone to see this computer.
 ClickFinish=
 ClickNext=
-SelectDirLabel3=Nexus will be installed in this folder.
+SelectDirLabel3=Vitals will be installed in this folder.
 SelectDirBrowseLabel=
-SelectTasksLabel2=Choose what Nexus should set up:
+SelectTasksLabel2=Choose what Vitals should set up:
 
 [Icons]
-Name: "{group}\Uninstall Nexus Agent"; Filename: "{uninstallexe}"
-Name: "{autostartup}\Nexus Agent Tray"; Filename: "{app}\nexus.exe"; Parameters: "tray"; Tasks: tray
+Name: "{group}\Uninstall Vitals Agent"; Filename: "{uninstallexe}"
+Name: "{autostartup}\Vitals Agent Tray"; Filename: "{app}\vitals.exe"; Parameters: "tray"; Tasks: tray
 
 [Run]
-Filename: "{app}\nexus.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent runhidden; Tasks: tray
+Filename: "{app}\vitals.exe"; Parameters: "tray"; Description: "Launch Vitals Agent in System Tray"; Flags: nowait postinstall skipifsilent runhidden; Tasks: tray
 
 [Registry]
-Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\nexus.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\nexus.exe"; Flags: uninsdeletekey
-Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\nexus.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\vitals.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\vitals.exe"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\vitals.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [UninstallDelete]
 ; Config (with the device secret), logs and pairing files.
+Type: filesandordirs; Name: "{commonappdata}\Vitals"
 Type: filesandordirs; Name: "{commonappdata}\Nexus"
 Type: filesandordirs; Name: "{commonappdata}\PCMonitor"
 
 [Code]
 function DataDir(): String;
 begin
-  Result := ExpandConstant('{commonappdata}\Nexus');
+  Result := ExpandConstant('{commonappdata}\Vitals');
 end;
 
 function LegacyDataDir(): String;
 begin
   Result := ExpandConstant('{commonappdata}\PCMonitor');
+end;
+
+function NexusDataDir(): String;
+begin
+  Result := ExpandConstant('{commonappdata}\Nexus');
+end;
+
+// Install folder of a Nexus version (it holds nexus.exe), read from the shared-AppId uninstall
+// entry before this install overwrites it. Empty when the previous install is Vitals, or none.
+var
+  NexusAppDir: String;
+
+procedure FindNexusAppDir();
+var
+  Dir: String;
+begin
+  NexusAppDir := '';
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{F9FF55E1-801A-4E78-96FA-550A8B46C103}_is1',
+       'Inno Setup: App Path', Dir) and FileExists(AddBackslash(Dir) + 'nexus.exe') then
+    NexusAppDir := RemoveBackslash(Dir);
+  Log('Nexus install folder: "' + NexusAppDir + '"');
 end;
 
 function PairDir(): String;
@@ -222,10 +251,13 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
 begin
+  FindNexusAppDir();
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM vitals.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM nexus.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM pc-monitor-agent.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
   if ServiceExists() then
     Sc('stop {#ServiceName}');
+  Exec(ExpandConstant('{sys}\sc.exe'), 'stop {#LegacyServiceName}', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\sc.exe'), 'stop PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Result := '';
 end;
@@ -239,14 +271,17 @@ var
   I: Integer;
 begin
   ForceDirectories(DataDir());
-  // Migrate legacy config if upgrading from %ProgramData%\PCMonitor
+  // Upgrade from Nexus (%ProgramData%\Nexus) or PC Monitor (%ProgramData%\PCMonitor): keep the
+  // device secret, so the computer stays paired with its history.
+  if (not ConfigExists()) and FileExists(NexusDataDir() + '\config.toml') then
+    FileCopy(NexusDataDir() + '\config.toml', DataDir() + '\config.toml', False);
   if (not ConfigExists()) and FileExists(LegacyDataDir() + '\config.toml') then
     FileCopy(LegacyDataDir() + '\config.toml', DataDir() + '\config.toml', False);
 
   if not ConfigExists() then
   begin
     SaveStringToFile(DataDir() + '\config.toml',
-      '# Nexus agent config, written by the installer.' + #13#10 +
+      '# Vitals agent config, written by the installer.' + #13#10 +
       'convex_url = "{#ConvexUrl}"' + #13#10 +
       'live_interval_secs = 1' + #13#10, False);
     Exit;
@@ -281,14 +316,62 @@ var
 begin
   if not ServiceExists() then
   begin
-    Sc('create {#ServiceName} binPath= "\"' + ExpandConstant('{app}') + '\nexus.exe\" service" start= delayed-auto DisplayName= "{#AppName}"');
-    Sc('description {#ServiceName} "Sends this computer''s hardware stats to Nexus."');
+    Sc('create {#ServiceName} binPath= "\"' + ExpandConstant('{app}') + '\vitals.exe\" service" start= delayed-auto DisplayName= "{#AppName}"');
+    Sc('description {#ServiceName} "Sends this computer''s hardware stats to Vitals."');
     // Restart after a crash: 5 s, 5 s, then 60 s; reset the count after a day (NFR-06).
     Sc('failure {#ServiceName} reset= 86400 actions= restart/5000/restart/5000/restart/60000');
   end;
-  // If upgrading from legacy PCMonitorAgent, stop and delete it
+  // If upgrading from NexusAgent or PCMonitorAgent, stop and delete it
+  Exec(ExpandConstant('{sys}\sc.exe'), 'stop {#LegacyServiceName}', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\sc.exe'), 'delete {#LegacyServiceName}', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\sc.exe'), 'stop PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\sc.exe'), 'delete PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+// Removes what a Nexus install left behind once its config is copied and its service deleted.
+// Only files the Nexus installer put there are deleted (never DelTree on the install folder: it
+// may be a custom one holding other files); folders go only when they end up empty.
+procedure MigrateNexusInstall();
+var
+  Flag: Cardinal;
+begin
+  if RegQueryDWordValue(HKLM, '{#LegacyStateKey}', 'InstalledPawnIO', Flag) and (Flag = 1) then
+    RegWriteDWordValue(HKLM, '{#StateKey}', 'InstalledPawnIO', 1);
+  RegDeleteKeyIncludingSubkeys(HKLM, '{#LegacyStateKey}');
+  RegDeleteKeyIncludingSubkeys(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\nexus.exe');
+  DeleteFile(ExpandConstant('{autostartup}\Nexus Agent Tray.lnk'));
+  DeleteFile(ExpandConstant('{commonprograms}\Nexus\Uninstall Nexus Agent.lnk'));
+  RemoveDir(ExpandConstant('{commonprograms}\Nexus'));
+
+  // The old data folder holds a copy of the device secret: remove it once ours has the config.
+  if FileExists(DataDir() + '\config.toml') then
+    DelTree(NexusDataDir(), True, True, True);
+
+  if NexusAppDir = '' then
+    Exit;
+  DeleteFile(NexusAppDir + '\nexus.exe');
+  DeleteFile(NexusAppDir + '\nexus.old');
+  // Installed into the Nexus folder after all (Customize): the rest now belongs to this install.
+  if CompareText(NexusAppDir, RemoveBackslash(ExpandConstant('{app}'))) = 0 then
+    Exit;
+  RemoveFromPath(NexusAppDir);
+  DeleteFile(NexusAppDir + '\docs\LEGAL_AGREEMENT.txt');
+  DeleteFile(NexusAppDir + '\docs\LEGAL_AGREEMENT.rtf');
+  DeleteFile(NexusAppDir + '\docs\LEGAL.md');
+  DeleteFile(NexusAppDir + '\docs\PRIVACY.md');
+  DeleteFile(NexusAppDir + '\docs\TERMS.md');
+  DeleteFile(NexusAppDir + '\docs\COOKIE_POLICY.md');
+  RemoveDir(NexusAppDir + '\docs');
+  DeleteFile(NexusAppDir + '\pawnio\AMDFamily17.bin');
+  DeleteFile(NexusAppDir + '\pawnio\IntelMSR.bin');
+  DeleteFile(NexusAppDir + '\pawnio\RyzenSMU.bin');
+  DeleteFile(NexusAppDir + '\pawnio\COPYING-PawnIO-Modules.txt');
+  RemoveDir(NexusAppDir + '\pawnio');
+  DeleteFile(NexusAppDir + '\LICENSE.txt');
+  DeleteFile(NexusAppDir + '\unins000.exe');
+  DeleteFile(NexusAppDir + '\unins000.dat');
+  RemoveDir(NexusAppDir);
+  Log('migrated Nexus install from ' + NexusAppDir);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -310,6 +393,7 @@ begin
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\config.toml" /inheritance:r /grant:r *S-1-5-18:F *S-1-5-32-544:F', '', SW_HIDE, ewWaitUntilTerminated, Code);
     InstallPawnIO();
     CreateService();
+    MigrateNexusInstall();
     if WizardIsTaskSelected('addtopath') then
       AddToPath(ExpandConstant('{app}'));
     // Silent installs skip the pairing page: start now; the agent waits until it is paired.
@@ -322,7 +406,7 @@ end;
 
 #include "pairing-page.iss"
 
-// Nexus theme, matching the app: navy frame and banner, yellow titles, cream content pages.
+// Vitals theme, matching the app: navy frame and banner, yellow titles, cream content pages.
 const
   ThemeNavy = $2E1B0F;    // #0F1B2E (Inno colours are $BBGGRR)
   ThemeCream = $E7F8FF;   // #FFF8E7
@@ -330,7 +414,7 @@ const
   ThemeInk = $23273E;     // #3E2723
   ThemeMuted = $E1D5CB;   // #CBD5E1
 
-procedure ApplyNexusTheme();
+procedure ApplyVitalsTheme();
 begin
   WizardForm.Color := ThemeNavy;
   // Top banner on inner pages
@@ -378,12 +462,12 @@ end;
 
 procedure TermsClick(Sender: TObject);
 begin
-  OpenTarget('https://github.com/theallmyti/Nexus/blob/main/docs/TERMS.md');
+  OpenTarget('https://github.com/theallmyti/Vitals/blob/main/docs/TERMS.md');
 end;
 
 procedure PrivacyClick(Sender: TObject);
 begin
-  OpenTarget('https://github.com/theallmyti/Nexus/blob/main/docs/PRIVACY.md');
+  OpenTarget('https://github.com/theallmyti/Vitals/blob/main/docs/PRIVACY.md');
 end;
 
 procedure AgreeChanged(Sender: TObject);
@@ -447,7 +531,7 @@ begin
   Lbl.Top := Top;
   Lbl.Width := WizardForm.WelcomeLabel2.Width - ScaleX(24);
   Lbl.WordWrap := True;
-  Lbl.Caption := 'I agree to the Nexus licence agreement, terms of service and privacy policy.';
+  Lbl.Caption := 'I agree to the Vitals licence agreement, terms of service and privacy policy.';
   Lbl.Font.Color := ThemeMuted;
   Lbl.Cursor := crHand;
   Lbl.OnClick := @AgreeLabelClick;
@@ -519,9 +603,20 @@ begin
   AnimTimer := SetTimer(0, 0, 200, CreateCallback(@AnimTick));
 end;
 
+// The wizard proposes the previous install folder. For a Nexus upgrade that is ...\Nexus, so
+// propose the default Vitals folder instead (MigrateNexusInstall then clears the old one). Vitals
+// upgrades keep their folder, so the existing service keeps pointing at the replaced binary.
+procedure UseVitalsDirOverNexus();
+begin
+  FindNexusAppDir();
+  if NexusAppDir <> '' then
+    WizardForm.DirEdit.Text := ExpandConstant('{autopf}\Vitals');
+end;
+
 procedure InitializeWizard();
 begin
-  ApplyNexusTheme();
+  UseVitalsDirOverNexus();
+  ApplyVitalsTheme();
   BuildWelcome();
   StartAnimation();
   CreatePairingPage(wpInstalling);
@@ -538,7 +633,7 @@ begin
   else if CurPageID = wpSelectTasks then
     WizardForm.NextButton.Caption := 'Install';
   if CurPageID = PairPage.ID then
-    StartPairing(ExpandConstant('{app}\nexus.exe'), PairDir(), DataDir() + '\config.toml');
+    StartPairing(ExpandConstant('{app}\vitals.exe'), PairDir(), DataDir() + '\config.toml');
 end;
 
 // Next (paired) or Skip: start the service either way; an unpaired agent waits until paired.
@@ -619,19 +714,22 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM vitals.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM nexus.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM pc-monitor-agent.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Sc('stop {#ServiceName}');
+    Exec(ExpandConstant('{sys}\sc.exe'), 'stop {#LegacyServiceName}', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\sc.exe'), 'stop PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    // Remove this computer and its history from Nexus (needs the config, so before files go).
-    if FileExists(ExpandConstant('{app}\nexus.exe')) then
-      Exec(ExpandConstant('{app}\nexus.exe'), 'unpair "' + DataDir() + '\config.toml"',
+    // Remove this computer and its history from Vitals (needs the config, so before files go).
+    if FileExists(ExpandConstant('{app}\vitals.exe')) then
+      Exec(ExpandConstant('{app}\vitals.exe'), 'unpair "' + DataDir() + '\config.toml"',
         '', SW_HIDE, ewWaitUntilTerminated, Code)
     else if FileExists(ExpandConstant('{app}\pc-monitor-agent.exe')) then
       Exec(ExpandConstant('{app}\pc-monitor-agent.exe'), 'unpair "' + DataDir() + '\config.toml"',
         '', SW_HIDE, ewWaitUntilTerminated, Code);
     Log('unpair -> ' + IntToStr(Code));
     Sc('delete {#ServiceName}');
+    Exec(ExpandConstant('{sys}\sc.exe'), 'delete {#LegacyServiceName}', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\sc.exe'), 'delete PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
     RemoveFromPath(ExpandConstant('{app}'));
     RemovePawnIO();

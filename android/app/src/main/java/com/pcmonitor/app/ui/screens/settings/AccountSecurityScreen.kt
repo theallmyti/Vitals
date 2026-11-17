@@ -94,7 +94,7 @@ fun AccountSecurityScreen(
                 subtitle = "Your account, computers and recent history as JSON",
                 onClick = {
                     val day = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-                    exportLauncher.launch("nexus-data-$day.json")
+                    exportLauncher.launch("vitals-data-$day.json")
                 }
             )
 

@@ -11,11 +11,12 @@ import { v } from "convex/values";
 //   3. To drop something old: release an agent that no longer uses it, raise MIN_AGENT_VERSION
 //      to that release, wait until no device in the dashboard reports an older version,
 //      then remove it.
-//   4. Each agent release raises LATEST_AGENT_VERSION (same as agent/Cargo.toml); devices on
-//      an older version show "update available" on the site, and the agent logs it.
+//   4. The release workflow publishes each version to the releases table (releases.ts), which
+//      pushes it to every agent. LATEST_AGENT_VERSION is only the floor used before the first
+//      publish; raise it occasionally so a fresh backend does not report an ancient version.
 //   5. Deploy the backend before shipping an agent that calls a new function
 //      (0.2.0 needs agent:pushSummaries).
-export const LATEST_AGENT_VERSION = "0.2.5";
+export const LATEST_AGENT_VERSION = "1.0.0";
 export const MIN_AGENT_VERSION = "0.1.0";
 
 // Compares "x.y.z" versions numerically; missing or non-numeric parts count as 0.
@@ -29,8 +30,8 @@ export function compareVersions(a: string, b: string) {
   return 0;
 }
 
-export function isOutdated(version: string | undefined) {
-  return version !== undefined && compareVersions(version, LATEST_AGENT_VERSION) < 0;
+export function isOutdated(version: string | undefined, latest: string = LATEST_AGENT_VERSION) {
+  return version !== undefined && compareVersions(version, latest) < 0;
 }
 
 export function isUnsupported(version: string | undefined) {

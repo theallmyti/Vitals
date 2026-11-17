@@ -1,4 +1,4 @@
-//! Windows system tray controller for Nexus Agent.
+//! Windows system tray controller for Vitals Agent.
 //! Runs in the user desktop session (Session 1), displays real-time tooltip stats,
 //! provides pause/resume controls, opens the log viewer, and manages service state.
 
@@ -46,8 +46,6 @@ const ID_PAUSE_8H: usize = 2015;
 const ID_PAUSE_CUSTOM: usize = 2016;
 const ID_PAUSE_INDEF: usize = 2017;
 const ID_RESUME: usize = 2020;
-const ID_PAIR: usize = 2025;
-const ID_OPEN_LOGS: usize = 2040;
 const ID_RESTART_SERVICE: usize = 2050;
 const ID_UNPAIR: usize = 2060;
 const ID_EXIT: usize = 2099;
@@ -139,7 +137,7 @@ pub fn run() {
 
     unsafe {
         let hinstance = GetModuleHandleW(null());
-        let class_name = to_wide("NexusAgentTrayClass");
+        let class_name = to_wide("VitalsAgentTrayClass");
 
         let wnd_class = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
@@ -161,7 +159,7 @@ pub fn run() {
         let hwnd = CreateWindowExW(
             0,
             class_name.as_ptr(),
-            to_wide("Nexus Agent Tray").as_ptr(),
+            to_wide("Vitals Agent Tray").as_ptr(),
             WS_POPUP,
             0,
             0,
@@ -203,7 +201,7 @@ pub fn run() {
         nid.uCallbackMessage = WM_TRAYICON;
         nid.hIcon = hicon_active;
 
-        let initial_tip = to_wide("Nexus Agent: Active\nInitializing stats...");
+        let initial_tip = to_wide("Vitals Agent: Active\nInitializing stats...");
         let copy_len = initial_tip.len().min(nid.szTip.len() - 1);
         nid.szTip[..copy_len].copy_from_slice(&initial_tip[..copy_len]);
 
@@ -282,9 +280,9 @@ fn update_tray(hwnd: HWND) {
         };
 
         let tip = if is_restarting {
-            "Nexus Agent: Restarting service...\nPlease wait...".to_string()
+            "Vitals Agent: Restarting service...\nPlease wait...".to_string()
         } else if is_unpairing {
-            "Nexus Agent: Unpairing device...\nPlease wait...".to_string()
+            "Vitals Agent: Unpairing device...\nPlease wait...".to_string()
         } else if ctrl.paused {
             if let Some(until) = ctrl.until {
                 let now = control::now_secs();
@@ -294,31 +292,31 @@ fn update_tray(hwnd: HWND) {
                     0
                 };
                 format!(
-                    "Nexus Agent: Paused\nLogging paused (resumes in ~{}m)",
+                    "Vitals Agent: Paused\nLogging paused (resumes in ~{}m)",
                     rem_min
                 )
             } else {
-                "Nexus Agent: Paused\nLogging paused indefinitely".to_string()
+                "Vitals Agent: Paused\nLogging paused indefinitely".to_string()
             }
         } else if let Some(s) = status {
             if s.state == "stopped" {
-                "Nexus Agent: Stopped\nService is idle".to_string()
+                "Vitals Agent: Stopped\nService is idle".to_string()
             } else if s.state == "unpaired" {
-                "Nexus Agent: Unpaired\nRight-click to pair".to_string()
+                "Vitals Agent: Unpaired\nRight-click to pair".to_string()
             } else if s.state == "connecting" {
-                "Nexus Agent: Connecting...".to_string()
+                "Vitals Agent: Connecting...".to_string()
             } else {
                 let temp_str = match s.temp_c {
                     Some(t) => format!(" | {:.0}°C", t),
                     None => String::new(),
                 };
                 format!(
-                    "Nexus Agent: Active\nCPU: {:.0}% | RAM: {:.0}%{}",
+                    "Vitals Agent: Active\nCPU: {:.0}% | RAM: {:.0}%{}",
                     s.cpu_util, s.ram_pct, temp_str
                 )
             }
         } else {
-            "Nexus Agent: Active\nConnected".to_string()
+            "Vitals Agent: Active\nConnected".to_string()
         };
 
         (icon, tip)
@@ -410,7 +408,7 @@ fn show_context_menu(hwnd: HWND) {
             hmenu,
             MF_STRING | MF_DISABLED | MF_GRAYED,
             ID_HEADER,
-            to_wide("Nexus Agent").as_ptr(),
+            to_wide("Vitals Agent").as_ptr(),
         );
 
         let status_label = if is_restarting {
@@ -444,14 +442,6 @@ fn show_context_menu(hwnd: HWND) {
         );
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
 
-        AppendMenuW(
-            hmenu,
-            MF_STRING,
-            ID_PAIR,
-            to_wide("Pair Device...").as_ptr(),
-        );
-        AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
-
         let pause_flags = if is_stopped || is_restarting || is_unpairing {
             MF_POPUP | MF_DISABLED | MF_GRAYED
         } else {
@@ -474,14 +464,6 @@ fn show_context_menu(hwnd: HWND) {
             resume_flags,
             ID_RESUME,
             to_wide("Resume Monitoring").as_ptr(),
-        );
-
-        AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
-        AppendMenuW(
-            hmenu,
-            MF_STRING,
-            ID_OPEN_LOGS,
-            to_wide("Open Logs...").as_ptr(),
         );
 
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
@@ -580,53 +562,6 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             control::clear_pause(&data_dir);
             update_tray(hwnd);
         }
-        ID_PAIR => {
-            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus.exe"));
-            let config_path = data_dir.join("config.toml");
-            std::thread::spawn(move || {
-                #[cfg(windows)]
-                {
-                    // config.toml is SYSTEM + Administrators only (it holds the device secret), so a
-                    // standard user elevates via RunAs; an elevated tray can pair directly.
-                    // Pairing appends the secret, so the check is for write access.
-                    let is_accessible = std::fs::OpenOptions::new()
-                        .append(true)
-                        .open(&config_path)
-                        .is_ok();
-                    if is_accessible {
-                        use std::os::windows::process::CommandExt;
-                        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-                        let _ = std::process::Command::new(&exe_path)
-                            .args(["pair", "--gui", &config_path.to_string_lossy()])
-                            .creation_flags(CREATE_NO_WINDOW)
-                            .spawn();
-                    } else if let Err(e) = run_elevated(
-                        &exe_path,
-                        &format!("pair --gui \"{}\"", config_path.display()),
-                        true,
-                        false,
-                    ) {
-                        show_error(&format!("Couldn't open the pairing window ({e})."));
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    let _ = std::process::Command::new(&exe_path)
-                        .args(["pair", &config_path.to_string_lossy()])
-                        .spawn();
-                }
-            });
-        }
-        ID_OPEN_LOGS => {
-            let log_path = data_dir.join("agent.log");
-            let _ = std::fs::create_dir_all(&data_dir);
-            if !log_path.exists() {
-                let _ = std::fs::write(&log_path, "=== Nexus Agent Log ===\r\n");
-            }
-            let _ = std::process::Command::new("notepad.exe")
-                .arg(&log_path)
-                .spawn();
-        }
         ID_RESTART_SERVICE => {
             let now = control::now_secs();
             let restarting_until = RESTARTING_UNTIL.load(Ordering::SeqCst);
@@ -641,11 +576,14 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                 // Restarting a service needs admin: one UAC prompt, straight from the tray.
                 if let Err(e) = run_elevated(
                     &powershell_path(),
-                    "-NoProfile -WindowStyle Hidden -Command \"Restart-Service NexusAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue\"",
+                    &format!(
+                        "-NoProfile -WindowStyle Hidden -Command \"{}\"",
+                        crate::update::restart_service_ps()
+                    ),
                     false,
                     false,
                 ) {
-                    show_error(&format!("Couldn't restart the Nexus service ({e})."));
+                    show_error(&format!("Couldn't restart the Vitals service ({e})."));
                 }
             });
         }
@@ -658,7 +596,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             UNPAIRING_UNTIL.store(now + 10, Ordering::SeqCst);
             update_tray(hwnd);
 
-            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus.exe"));
+            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("vitals.exe"));
             let config_path = data_dir.join("config.toml");
             let data_dir_clone = data_dir.clone();
 
@@ -696,9 +634,10 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                     // Single-quoted PowerShell strings: a ' inside a path is doubled.
                     let ps_quote = |p: &Path| p.display().to_string().replace('\'', "''");
                     let script = format!(
-                        "& '{}' unpair '{}'; Restart-Service NexusAgent -ErrorAction SilentlyContinue",
+                        "& '{}' unpair '{}'; {}",
                         ps_quote(&exe_path),
-                        ps_quote(&config_path)
+                        ps_quote(&config_path),
+                        crate::update::restart_service_ps()
                     );
                     if let Err(e) = run_elevated(
                         &powershell_path(),
@@ -732,7 +671,9 @@ fn powershell_path() -> PathBuf {
 fn run_elevated(file: &Path, params: &str, show: bool, wait: bool) -> Result<(), String> {
     use windows_sys::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, GetLastError};
     use windows_sys::Win32::System::Threading::{INFINITE, WaitForSingleObject};
-    use windows_sys::Win32::UI::Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW};
+    use windows_sys::Win32::UI::Shell::{
+        SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOWNORMAL};
 
     let verb = to_wide("runas");
@@ -767,7 +708,7 @@ fn run_elevated(file: &Path, params: &str, show: bool, wait: bool) -> Result<(),
 fn show_error(text: &str) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK, MessageBoxW};
     let body = to_wide(text);
-    let title = to_wide("Nexus");
+    let title = to_wide("Vitals");
     unsafe {
         MessageBoxW(0, body.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING);
     }
@@ -779,7 +720,7 @@ fn prompt_custom_pause(data_dir: &Path) {
         Add-Type -AssemblyName Microsoft.VisualBasic;
         $val = [Microsoft.VisualBasic.Interaction]::InputBox(
             'Enter pause duration in minutes (e.g. 45):',
-            'Nexus Agent - Custom Pause',
+            'Vitals Agent - Custom Pause',
             '30'
         );
         if ($val) { [Console]::WriteLine($val.Trim()) }

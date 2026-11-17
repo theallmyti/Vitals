@@ -198,7 +198,7 @@ fun DevicesScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Install Nexus on your computer, then tap Add Device and scan the QR code it shows.",
+                                    text = "Install Vitals on your computer, then tap Add Device and scan the QR code it shows.",
                                     fontFamily = ReadableFontFamily,
                                     fontSize = 13.sp,
                                     color = TextGray,

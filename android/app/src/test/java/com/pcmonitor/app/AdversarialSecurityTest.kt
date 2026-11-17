@@ -55,7 +55,7 @@ class AdversarialSecurityTest {
         assertTrue("Built-in demo account must not exist", demoResult.isFailure)
         assertTrue(
             "Offline sign-in explains the problem",
-            demoResult.exceptionOrNull()?.message?.contains("Can't reach Nexus") == true
+            demoResult.exceptionOrNull()?.message?.contains("Can't reach Vitals") == true
         )
 
         // Tier 7: Injection strings must fail gracefully without unhandled exception
@@ -124,11 +124,11 @@ class AdversarialSecurityTest {
         // Tier 7: Malformed and missing FCM remote message fields
         val emptyMap = emptyMap<String, String>()
         val deviceId = emptyMap["deviceId"] ?: "primary-pc"
-        val title = emptyMap["title"] ?: "Nexus Alert"
+        val title = emptyMap["title"] ?: "Vitals Alert"
         val message = emptyMap["message"] ?: "Threshold exceeded on device"
 
         assertEquals("primary-pc", deviceId)
-        assertEquals("Nexus Alert", title)
+        assertEquals("Vitals Alert", title)
         assertEquals("Threshold exceeded on device", message)
 
         // Special characters and XSS in notification title

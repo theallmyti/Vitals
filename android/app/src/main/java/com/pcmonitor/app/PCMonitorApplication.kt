@@ -48,7 +48,7 @@ class PCMonitorApplication : Application() {
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (task.isSuccessful) {
                 val token = task.result
-                Log.i("NexusApplication", "FCM Registration Token: $token")
+                Log.i("VitalsApplication", "FCM Registration Token: $token")
                 CoroutineScope(Dispatchers.IO).launch {
                     userPreferencesRepository.setFcmToken(token)
                     val email = userPreferencesRepository.userEmail.first()
@@ -57,7 +57,7 @@ class PCMonitorApplication : Application() {
                     }
                 }
             } else {
-                Log.w("NexusApplication", "Failed to fetch FCM registration token", task.exception)
+                Log.w("VitalsApplication", "Failed to fetch FCM registration token", task.exception)
             }
         }
 

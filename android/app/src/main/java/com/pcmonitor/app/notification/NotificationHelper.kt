@@ -120,7 +120,7 @@ object NotificationHelper {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_CANARY)
             .setSmallIcon(R.drawable.ic_notification_alert)
-            .setContentTitle("Nexus · Canary")
+            .setContentTitle("Vitals · Canary")
             .setContentText("Connection healthy")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)

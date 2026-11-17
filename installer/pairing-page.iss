@@ -1,5 +1,5 @@
-// "Pair this computer" wizard page, included in [Code] by nexus.iss.
-// Runs `nexus pair --ui <dir> <config>` hidden; every second it reads <dir>\status.txt
+// "Pair this computer" wizard page, included in [Code] by vitals.iss.
+// Runs `vitals pair --ui <dir> <config>` hidden; every second it reads <dir>\status.txt
 // and shows the QR code image (<dir>\qr.bmp), the code, a countdown and the state.
 // Timer: SetTimer + CreateCallback, as in Inno Setup's Examples\CodeDll.iss.
 
@@ -51,7 +51,7 @@ begin
   TimerLabel.Caption := '';
   HintLabel.Caption := 'Monitoring starts when you click Next.';
   StatusLabel.Font.Color := clGreen;
-  StatusLabel.Caption := 'Paired. This computer is now linked to Nexus.';
+  StatusLabel.Caption := 'Paired. This computer is now linked to Vitals.';
   WizardForm.NextButton.Caption := SetupMessage(msgButtonNext);
 end;
 
@@ -89,7 +89,7 @@ end;
 procedure CreatePairingPage(AfterID: Integer);
 begin
   PairPage := CreateCustomPage(AfterID, 'Pair this computer',
-    'Link this computer to your Nexus by scanning the QR code with your phone.');
+    'Link this computer to your Vitals by scanning the QR code with your phone.');
 
   QRImage := TBitmapImage.Create(PairPage);
   QRImage.Parent := PairPage.Surface;
@@ -117,7 +117,7 @@ begin
   HintLabel.AutoSize := False;
   HintLabel.Height := ScaleY(60);
   HintLabel.WordWrap := True;
-  HintLabel.Caption := 'Scan with your camera or Google Lens to open the Nexus app or download the APK. ' +
+  HintLabel.Caption := 'Scan with your camera or Google Lens to open the Vitals app or download the APK. ' +
     'Or enter the 6-character code manually in the app.';
 
   TimerLabel := TNewStaticText.Create(PairPage);

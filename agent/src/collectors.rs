@@ -136,7 +136,9 @@ pub fn per_cpu_temps(components: &Components, logical: usize) -> Option<Vec<f64>
     let mut by_core: HashMap<u32, f64> = HashMap::new();
     for c in components.iter() {
         let label = c.label();
-        let Some(rest) = label.split("Core ").nth(1) else { continue };
+        let Some(rest) = label.split("Core ").nth(1) else {
+            continue;
+        };
         let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
         if let (Ok(id), Some(t)) = (digits.parse::<u32>(), c.temperature())
             && (0.0..=125.0).contains(&t)
@@ -150,7 +152,11 @@ pub fn per_cpu_temps(components: &Components, logical: usize) -> Option<Vec<f64>
     (0..logical)
         .map(|cpu| {
             let path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/core_id");
-            let id = std::fs::read_to_string(path).ok()?.trim().parse::<u32>().ok()?;
+            let id = std::fs::read_to_string(path)
+                .ok()?
+                .trim()
+                .parse::<u32>()
+                .ok()?;
             by_core.get(&id).copied()
         })
         .collect()

@@ -7,6 +7,7 @@ import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { deviceBySecretHash, removeDeviceData } from "./model";
 import { LATEST_AGENT_VERSION, isUnsupported } from "./versions";
+import { currentAgentVersion } from "./releases";
 import { RETENTION_MS } from "./summaries";
 import { evaluateSummary } from "./alerts";
 import { v, ConvexError, type Infer } from "convex/values";
@@ -33,7 +34,7 @@ export const hello = mutation({
     validateSecretHash(args.secretHash);
     if (isUnsupported(args.agentVersion)) {
       throw new ConvexError(
-        `This agent (${args.agentVersion}) is too old. Install version ${LATEST_AGENT_VERSION} from Nexus's releases.`,
+        `This agent (${args.agentVersion}) is too old. Install version ${LATEST_AGENT_VERSION} from Vitals's releases.`,
       );
     }
     const device = await deviceBySecretHash(ctx, args.secretHash);
@@ -63,7 +64,7 @@ export const hello = mutation({
     // owned = linked to an account. Devices paired before accounts existed have no owner and
     // are shown to nobody until they are paired again (docs/Security.md §2).
     // latestVersion: the agent logs when a newer release exists (versions.ts).
-    return { deviceId: device._id, owned: device.userId !== undefined, latestVersion: LATEST_AGENT_VERSION };
+    return { deviceId: device._id, owned: device.userId !== undefined, latestVersion: await currentAgentVersion(ctx) };
   },
 });
 

@@ -106,11 +106,11 @@ export const requestPasswordReset = action({
     if (started === true) {
       await sendEmail(
         email,
-        `Your Nexus reset code: ${code}`,
-        `Your Nexus password reset code is ${code}.
+        `Your Vitals reset code: ${code}`,
+        `Your Vitals password reset code is ${code}.
 
 It expires in 15 minutes. If you didn't ask for this, ignore this email; your password stays the same.`,
-        `<p>Your Nexus password reset code is</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p>` +
+        `<p>Your Vitals password reset code is</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p>` +
           `<p>It expires in 15 minutes. If you didn't ask for this, ignore this email; your password stays the same.</p>`,
       );
     }

@@ -22,6 +22,7 @@ import type * as model from "../model.js";
 import type * as pairing from "../pairing.js";
 import type * as passwords from "../passwords.js";
 import type * as rateLimit from "../rateLimit.js";
+import type * as releases from "../releases.js";
 import type * as summaries from "../summaries.js";
 import type * as turnstile from "../turnstile.js";
 import type * as users from "../users.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   pairing: typeof pairing;
   passwords: typeof passwords;
   rateLimit: typeof rateLimit;
+  releases: typeof releases;
   summaries: typeof summaries;
   turnstile: typeof turnstile;
   users: typeof users;

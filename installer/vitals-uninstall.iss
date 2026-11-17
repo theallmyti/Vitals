@@ -1,13 +1,13 @@
-; Standalone uninstaller: dist\nexus-uninstall.exe (Inno Setup 6).
-; Removes Nexus Agent from any installed version:
-; 1. removes this computer and its history from Nexus (bundled agent: `unpair`)
+; Standalone uninstaller: dist\vitals-uninstall.exe (Inno Setup 6).
+; Removes Vitals Agent from any installed version:
+; 1. removes this computer and its history from Vitals (bundled agent: `unpair`)
 ; 2. runs the installed uninstaller silently and waits until it has finished
 ; 3. removes the PawnIO driver if it is still present, after asking (other apps may use it)
 
 #define AppId "{F9FF55E1-801A-4E78-96FA-550A8B46C103}"
 
 [Setup]
-AppName=Nexus Agent Uninstaller
+AppName=Vitals Agent Uninstaller
 AppVersion=0.1.0
 CreateAppDir=no
 Uninstallable=no
@@ -15,11 +15,11 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
-OutputBaseFilename=nexus-uninstall
+OutputBaseFilename=vitals-uninstall
 WizardStyle=modern
 
 [Files]
-Source: "..\agent\target\release\nexus.exe"; Flags: dontcopy
+Source: "..\agent\target\release\vitals.exe"; Flags: dontcopy
 
 [Code]
 const
@@ -72,16 +72,20 @@ begin
 
   if Installed then
   begin
-    if MsgBox('Remove Nexus Agent from this computer?' + #13#10 + #13#10 +
-       'This stops monitoring, removes this computer and its history from the Nexus ' +
+    if MsgBox('Remove Vitals Agent from this computer?' + #13#10 + #13#10 +
+       'This stops monitoring, removes this computer and its history from the Vitals ' +
        'dashboard, and deletes the program and its settings.', mbConfirmation, MB_YESNO) <> IDYES then
       Exit;
 
-    ExtractTemporaryFile('nexus.exe');
-    Exec(ExpandConstant('{tmp}\nexus.exe'),
+    ExtractTemporaryFile('vitals.exe');
+    Exec(ExpandConstant('{tmp}\vitals.exe'),
+      'unpair "' + ExpandConstant('{commonappdata}') + '\Vitals\config.toml"',
+      '', SW_HIDE, ewWaitUntilTerminated, Code);
+    // Installed before the rename (Nexus, then PC Monitor) and never upgraded with the installer.
+    Exec(ExpandConstant('{tmp}\vitals.exe'),
       'unpair "' + ExpandConstant('{commonappdata}') + '\Nexus\config.toml"',
       '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Exec(ExpandConstant('{tmp}\nexus.exe'),
+    Exec(ExpandConstant('{tmp}\vitals.exe'),
       'unpair "' + ExpandConstant('{commonappdata}') + '\PCMonitor\config.toml"',
       '', SW_HIDE, ewWaitUntilTerminated, Code);
 
@@ -99,13 +103,13 @@ begin
         RunCommandLine(Quiet);
   end
   else if not Installed then
-    MsgBox('Nexus Agent is not installed on this computer.', mbInformation, MB_OK);
+    MsgBox('Vitals Agent is not installed on this computer.', mbInformation, MB_OK);
 
   if not Installed then
     Exit;
   if RegKeyExists(HKLM, UninstKey) then
-    MsgBox('Nexus Agent could not be removed completely. Try again, or remove it from ' +
+    MsgBox('Vitals Agent could not be removed completely. Try again, or remove it from ' +
       'Settings > Apps.', mbError, MB_OK)
   else
-    MsgBox('Nexus Agent has been removed.', mbInformation, MB_OK);
+    MsgBox('Vitals Agent has been removed.', mbInformation, MB_OK);
 end;

@@ -1,5 +1,5 @@
 //! Native Windows Pairing GUI Window.
-//! Opens when "Pair Device..." is clicked in the system tray, or via `nexus pair --gui`.
+//! Opens when "Pair Device..." is clicked in the system tray, or via `vitals pair --gui`.
 //! Displays a crisp QR code, readable 6-character code, expiration countdown,
 //! live confirmation status, and direct "Open in Browser" / "Copy Code" buttons.
 
@@ -197,7 +197,7 @@ unsafe extern "system" fn wnd_proc(
                 let h_header = CreateWindowExW(
                     0,
                     to_wide("STATIC").as_ptr(),
-                    to_wide("Pair This Computer with Nexus").as_ptr(),
+                    to_wide("Pair This Computer with Vitals").as_ptr(),
                     WS_CHILD | WS_VISIBLE | SS_CENTER,
                     20,
                     16,
@@ -213,7 +213,7 @@ unsafe extern "system" fn wnd_proc(
                 let h_subtitle = CreateWindowExW(
                     0,
                     to_wide("STATIC").as_ptr(),
-                    to_wide("Scan the QR code with your phone camera or Nexus app.").as_ptr(),
+                    to_wide("Scan the QR code with your phone camera or Vitals app.").as_ptr(),
                     WS_CHILD | WS_VISIBLE | SS_CENTER,
                     20,
                     42,
@@ -485,7 +485,7 @@ fn refresh_display(_hwnd: HWND) {
                     left % 60
                 )
             } else if state == "connecting" {
-                "Connecting to Nexus...".to_string()
+                "Connecting to Vitals...".to_string()
             } else {
                 "Refreshing code...".to_string()
             };
@@ -518,7 +518,7 @@ pub fn launch_pairing_gui(_data_dir: PathBuf, config_path: PathBuf) {
 
     // Register class and create window
     let hinstance = unsafe { GetModuleHandleW(null()) };
-    let class_name = to_wide("NexusPairingWindowClass");
+    let class_name = to_wide("VitalsPairingWindowClass");
 
     let wnd_class = WNDCLASSEXW {
         cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
@@ -546,7 +546,7 @@ pub fn launch_pairing_gui(_data_dir: PathBuf, config_path: PathBuf) {
         CreateWindowExW(
             0,
             class_name.as_ptr(),
-            to_wide("Nexus - Pair Device").as_ptr(),
+            to_wide("Vitals - Pair Device").as_ptr(),
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
             100,
             100,

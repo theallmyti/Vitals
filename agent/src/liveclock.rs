@@ -80,7 +80,13 @@ mod imp {
                     return None;
                 }
                 let mut value: PDH_FMT_COUNTERVALUE = std::mem::zeroed();
-                if PdhGetFormattedCounterValue(self.counter, PDH_FMT_DOUBLE, std::ptr::null_mut(), &mut value) != 0 {
+                if PdhGetFormattedCounterValue(
+                    self.counter,
+                    PDH_FMT_DOUBLE,
+                    std::ptr::null_mut(),
+                    &mut value,
+                ) != 0
+                {
                     return None;
                 }
                 let pct = value.Anonymous.doubleValue;

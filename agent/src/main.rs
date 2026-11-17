@@ -1,4 +1,4 @@
-//! Nexus agent: samples every second, sends a summary every 60 s, and sends live
+//! Vitals agent: samples every second, sends a summary every 60 s, and sends live
 //! data only while someone is watching (docs/Architecture.md §2.2, FR-30, FR-31).
 //! Convex client: https://docs.rs/convex/0.10.4 (clone shares the connection; the client
 //! reconnects by itself with backoff, so only the first connection is retried here).
@@ -12,10 +12,10 @@ mod collectors;
 mod config;
 mod control;
 mod cputemp;
-mod liveclock;
 mod dashboard;
 mod gpu;
 mod hardware;
+mod liveclock;
 mod pair;
 #[cfg(windows)]
 mod pair_gui;
@@ -78,8 +78,9 @@ fn print_sensors() {
         None => say!("{:<40} n/a", "memory speed"),
     }
     // Base vs live CPU clock (live differs on Windows, where sysinfo only knows the base clock).
-    let sys = System::new_with_specifics(RefreshKind::nothing().with_cpu(CpuRefreshKind::everything()))
-        .expect("failed to read system info");
+    let sys =
+        System::new_with_specifics(RefreshKind::nothing().with_cpu(CpuRefreshKind::everything()))
+            .expect("failed to read system info");
     let clock = liveclock::LiveClock::open();
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let (_, mut clocks) = collectors::per_core(&sys);
@@ -418,11 +419,59 @@ fn watch_viewer(mut client: ConvexClient, secret_hash: String, viewer_until: Arc
     });
 }
 
+/// Push updates: subscribe to releases:latest and install each newer agent version the backend
+/// announces (the release workflow publishes it once the GitHub release is live).
+/// Older backends without releases:latest just make the subscription fail; the 6-hour poll stays.
+fn watch_release(
+    mut client: ConvexClient,
+    secret_hash: &str,
+    data_dir: PathBuf,
+    current_exe: PathBuf,
+) {
+    let own = env!("CARGO_PKG_VERSION");
+    // Per-device spread for announced_update_delay: the device key hash, stable across restarts.
+    let spread = u64::from_str_radix(secret_hash.get(..16).unwrap_or("0"), 16).unwrap_or(0);
+    tokio::spawn(async move {
+        let mut handled: Option<String> = None;
+        loop {
+            match client.subscribe("releases:latest", BTreeMap::new()).await {
+                Ok(mut sub) => {
+                    while let Some(result) = sub.next().await {
+                        let FunctionResult::Value(Value::Object(o)) = result else {
+                            warn!("releases:latest: {result:?}");
+                            continue;
+                        };
+                        let Some(Value::String(v)) = o.get("agentVersion") else { continue };
+                        if handled.as_deref() == Some(v.as_str()) || !update::is_newer(v, own) {
+                            continue;
+                        }
+                        handled = Some(v.clone());
+                        say!("version {v} published (this is {own}); installing it");
+                        let (v, d, e) = (v.clone(), data_dir.clone(), current_exe.clone());
+                        tokio::spawn(async move {
+                            update::install_announced(&v, &d, own, &e, spread).await;
+                        });
+                    }
+                }
+                Err(e) => warn!("releases:latest failed: {e}"),
+            }
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
+}
+
 fn print_help() {
-    let admin = if cfg!(windows) { "an admin terminal" } else { "sudo" };
-    println!("Nexus agent v{}  -  github.com/theallmyti/Nexus", env!("CARGO_PKG_VERSION"));
+    let admin = if cfg!(windows) {
+        "an admin terminal"
+    } else {
+        "sudo"
+    };
+    println!(
+        "Vitals agent v{}  -  github.com/theallmyti/Vitals",
+        env!("CARGO_PKG_VERSION")
+    );
     println!();
-    println!("Usage: nexus <command> [options]");
+    println!("Usage: vitals <command> [options]");
     println!();
     println!("Everyday");
     println!("  status            Is the agent running? Shows mode, last upload and live readings");
@@ -446,14 +495,14 @@ fn print_help() {
     #[cfg(windows)]
     {
         println!("Started by Windows (you normally don't run these)");
-        println!("  service           Run as the NexusAgent Windows service");
+        println!("  service           Run as the VitalsAgent Windows service");
         println!("  tray              Show the system-tray icon");
         println!();
     }
     println!("Examples");
-    println!("  nexus status");
-    println!("  nexus pause 60          pause for one hour");
-    println!("  nexus pair");
+    println!("  vitals status");
+    println!("  vitals pause 60          pause for one hour");
+    println!("  vitals pair");
     println!();
     println!("With no command, the agent runs in this terminal using a config file path");
     println!("(default config.toml). Press Ctrl+C to stop.");
@@ -483,6 +532,9 @@ pub(crate) fn resolve_data_dir() -> PathBuf {
     #[cfg(not(windows))]
     {
         let candidates = [
+            PathBuf::from("/etc/vitals"),
+            PathBuf::from("/var/lib/vitals"),
+            // Installed before the rename and auto-updated since (binary swap only).
             PathBuf::from("/etc/nexus"),
             PathBuf::from("/var/lib/nexus"),
             PathBuf::from("/etc/pc-monitor"),
@@ -494,7 +546,7 @@ pub(crate) fn resolve_data_dir() -> PathBuf {
                 return c.clone();
             }
         }
-        PathBuf::from("/etc/nexus")
+        PathBuf::from("/etc/vitals")
     }
 }
 
@@ -514,7 +566,7 @@ pub(crate) fn resolve_config_path(explicit: Option<&str>) -> PathBuf {
 }
 
 fn print_status() {
-    println!("Nexus Agent v{}", env!("CARGO_PKG_VERSION"));
+    println!("Vitals Agent v{}", env!("CARGO_PKG_VERSION"));
     println!("-----------------------------");
 
     let dir = resolve_data_dir();
@@ -530,7 +582,7 @@ fn print_status() {
                     Some(u) if u > now => format!("Paused (resumes in ~{}m)", (u - now) / 60 + 1),
                     _ => "Paused indefinitely".to_string(),
                 },
-                "unpaired" => "Unpaired (run `nexus pair`)".to_string(),
+                "unpaired" => "Unpaired (run `vitals pair`)".to_string(),
                 "connecting" => "Connecting...".to_string(),
                 "stopped" => "Stopped (service idle)".to_string(),
                 other => other.to_string(),
@@ -577,10 +629,12 @@ fn main() {
             control::set_pause(&data_dir, duration_secs, "cli");
             match mins {
                 Some(m) => println!(
-                    "Nexus monitoring paused for {m} minutes. Run `nexus resume` to resume."
+                    "Vitals monitoring paused for {m} minutes. Run `vitals resume` to resume."
                 ),
                 None => {
-                    println!("Nexus monitoring paused for 24 hours. Run `nexus resume` to resume.")
+                    println!(
+                        "Vitals monitoring paused for 24 hours. Run `vitals resume` to resume."
+                    )
                 }
             }
             return;
@@ -588,62 +642,36 @@ fn main() {
         Some("resume") => {
             let data_dir = resolve_data_dir();
             control::clear_pause(&data_dir);
-            println!("Nexus monitoring resumed.");
+            println!("Vitals monitoring resumed.");
             return;
         }
         Some("restart") => {
             #[cfg(windows)]
-            {
-                println!("Restarting NexusAgent Windows service...");
-                let status = std::process::Command::new("powershell")
-                    .args([
-                        "-NoProfile",
-                        "-WindowStyle",
-                        "Hidden",
-                        "-Command",
-                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue'",
-                    ])
-                    .status();
-                match status {
-                    Ok(s) if s.success() => println!("Restart command issued successfully."),
-                    _ => println!(
-                        "Failed to trigger service restart. Ensure you have administrator permissions."
-                    ),
-                }
-            }
+            println!("Restarting the Vitals Windows service...");
             #[cfg(not(windows))]
-            {
-                println!("Restarting Nexus systemd service...");
-                let status = std::process::Command::new("systemctl")
-                    .args(["restart", "nexus"])
-                    .status();
-                match status {
-                    Ok(s) if s.success() => println!("Nexus service restarted successfully."),
-                    _ => {
-                        let sudo_status = std::process::Command::new("sudo")
-                            .args(["systemctl", "restart", "nexus"])
-                            .status();
-                        match sudo_status {
-                            Ok(s) if s.success() => {
-                                println!("Nexus service restarted successfully via sudo.")
-                            }
-                            _ => println!(
-                                "Failed to restart service. Run: sudo systemctl restart nexus"
-                            ),
-                        }
-                    }
-                }
+            println!("Restarting the Vitals systemd service...");
+            match update::restart_service() {
+                Ok(()) => println!("Restart command issued successfully."),
+                #[cfg(windows)]
+                Err(_) => println!(
+                    "Failed to trigger service restart. Ensure you have administrator permissions."
+                ),
+                #[cfg(not(windows))]
+                Err(_) => println!(
+                    "Failed to restart service. Run: sudo systemctl restart {}",
+                    update::systemd_unit()
+                ),
             }
             return;
         }
         Some("update") | Some("upgrade") => {
             let data_dir = resolve_data_dir();
-            let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus"));
+            let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("vitals"));
             let own_version = env!("CARGO_PKG_VERSION");
-            println!("Nexus Update Manager");
+            println!("Vitals Update Manager");
             println!("-------------------");
             println!("Installed version: v{own_version}");
-            println!("Checking GitHub Releases (https://github.com/theallmyti/Nexus)...");
+            println!("Checking GitHub Releases (https://github.com/theallmyti/Vitals)...");
 
             match update::fetch_latest_release() {
                 Ok(release) => {
@@ -663,14 +691,14 @@ fn main() {
                             true,
                         )) {
                             Ok(Some(v)) => {
-                                println!("Successfully updated to Nexus v{v}!");
+                                println!("Successfully updated to Vitals v{v}!");
                                 println!("Service restart command triggered.");
                             }
-                            Ok(None) => println!("Nexus is already up to date."),
+                            Ok(None) => println!("Vitals is already up to date."),
                             Err(e) => println!("Update failed: {e}"),
                         }
                     } else {
-                        println!("Nexus is already up to date (version v{own_version}).");
+                        println!("Vitals is already up to date (version v{own_version}).");
                     }
                 }
                 Err(e) => println!("Update check failed: {e}"),
@@ -682,10 +710,10 @@ fn main() {
             return;
         }
         Some("version") | Some("--version") | Some("-V") => {
-            println!("nexus {}", env!("CARGO_PKG_VERSION"));
+            println!("vitals {}", env!("CARGO_PKG_VERSION"));
             return;
         }
-        // Remove this device from Nexus (run by the uninstaller).
+        // Remove this device from Vitals (run by the uninstaller).
         Some("unpair") => {
             let explicit = std::env::args().nth(2);
             let path = resolve_config_path(explicit.as_deref());
@@ -767,7 +795,7 @@ fn main() {
             return;
         }
         Some(arg) if looks_like_unknown_command(arg) => {
-            eprintln!("Unknown command '{arg}'. Run 'nexus help' to see all commands.");
+            eprintln!("Unknown command '{arg}'. Run 'vitals help' to see all commands.");
             exit(2);
         }
         _ => {}
@@ -852,7 +880,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
         .unwrap_or_else(|| std::path::Path::new("."))
         .to_path_buf();
 
-    let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus"));
+    let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("vitals"));
     let own_version = env!("CARGO_PKG_VERSION");
     update::check_startup_health(&data_dir, &current_exe, own_version);
 
@@ -921,7 +949,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 convex_url: Some(config.convex_url.clone()),
             },
         );
-        say!("not connected yet (see above; if not paired, run `nexus pair`); retrying in 60 s");
+        say!("not connected yet (see above; if not paired, run `vitals pair`); retrying in 60 s");
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(60)) => {}
             _ = stop.notified() => {
@@ -946,12 +974,15 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     let own_version = env!("CARGO_PKG_VERSION");
     if let Some(latest) = newer_version(&hello, own_version) {
         say!(
-            "update available: version {latest} (this is {own_version}); get it from https://github.com/theallmyti/Nexus/releases"
+            "update available: version {latest} (this is {own_version}); it installs automatically unless auto_update = false"
         );
     }
 
     let viewer_until = Arc::new(AtomicU64::new(0));
     watch_viewer(client.clone(), secret_hash.clone(), viewer_until.clone());
+    if config.auto_update {
+        watch_release(client.clone(), &secret_hash, data_dir.clone(), current_exe.clone());
+    }
 
     // Container counts are fetched every 10 s (they change slowly).
     let mut docker: Option<dashboard::DockerSummary> = None;

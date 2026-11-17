@@ -46,8 +46,10 @@ android {
         applicationId = "com.pcmonitor.app.debug"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.5"
+        // versionCode follows versionName (x.y.z -> x*10000 + y*100 + z, so 0.2.6 -> 206): it must
+        // grow with every release or phones refuse the in-app update. Only edit versionName.
+        versionName = "1.0.0"
+        versionCode = versionName!!.split(".").map(String::toInt).let { (x, y, z) -> x * 10000 + y * 100 + z }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

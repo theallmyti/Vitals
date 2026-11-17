@@ -1,4 +1,4 @@
-// Production schema for Nexus Fleet Monitoring System (Convex)
+// Production schema for Vitals Fleet Monitoring System (Convex)
 // Changes must be backward-compatible (add optional fields only) — docs/Development.md §3.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -218,4 +218,15 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_token", ["fcmToken"]),
+
+  // The published release (one row). Written only by CI (releases:publish, run with the deploy
+  // key); agents and the app subscribe to releases:latest and update as soon as it changes.
+  releases: defineTable({
+    agentVersion: v.string(),
+    appVersion: v.optional(v.string()),
+    appVersionCode: v.optional(v.number()),
+    apkUrl: v.optional(v.string()),
+    apkSha256: v.optional(v.string()),
+    publishedAt: v.number(),
+  }),
 });

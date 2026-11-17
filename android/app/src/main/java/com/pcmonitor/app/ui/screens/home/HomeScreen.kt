@@ -126,7 +126,7 @@ fun HomeScreen(
                             AppLogo(size = 32.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "NEXUS",
+                                text = "VITALS",
                                 fontFamily = PixelFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,

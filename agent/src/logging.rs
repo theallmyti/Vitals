@@ -117,7 +117,7 @@ mod tests {
     #[cfg(windows)]
     fn test_file_logger_rotation() {
         let temp_dir = std::env::temp_dir().join(format!(
-            "nexus_log_test_{}",
+            "vitals_log_test_{}",
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()

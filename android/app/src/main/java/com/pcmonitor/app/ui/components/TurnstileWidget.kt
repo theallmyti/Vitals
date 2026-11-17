@@ -22,7 +22,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 
 // Cloudflare Turnstile bot check for sign-up. The widget page is served by the Convex deployment
 // (convex/convex/http.ts /turnstile), whose hostname is registered on the widget; the token comes
-// back through the `NexusTurnstile` JavaScript bridge and is verified server-side in auth:signUp.
+// back through the `VitalsTurnstile` JavaScript bridge and is verified server-side in auth:signUp.
 private const val TURNSTILE_PAGE = "https://tidy-newt-65.convex.site/turnstile"
 private val ALLOWED_HOSTS = setOf("tidy-newt-65.convex.site", "challenges.cloudflare.com")
 
@@ -57,7 +57,8 @@ fun TurnstileWidget(
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                         !isAllowed(request.url)
                 }
-                addJavascriptInterface(object {
+                // Registered under the pre-rename name too, for a server not yet redeployed.
+                val bridge = object {
                     @JavascriptInterface
                     fun onToken(token: String) {
                         val t = token.takeIf { it.isNotBlank() && it.length <= 2048 }
@@ -73,7 +74,9 @@ fun TurnstileWidget(
                     fun onError(@Suppress("UNUSED_PARAMETER") code: String) {
                         post { currentOnToken(null) }
                     }
-                }, "NexusTurnstile")
+                }
+                addJavascriptInterface(bridge, "VitalsTurnstile")
+                addJavascriptInterface(bridge, "NexusTurnstile")
                 loadUrl(TURNSTILE_PAGE)
                 webView = this
             }
@@ -84,7 +87,10 @@ fun TurnstileWidget(
     LaunchedEffect(resetSignal) {
         if (resetSignal > 0) {
             currentOnToken(null)
-            webView?.evaluateJavascript("window.nexusReset && window.nexusReset()", null)
+            webView?.evaluateJavascript(
+                "(window.vitalsReset || window.nexusReset || function () {})()",
+                null
+            )
         }
     }
 }

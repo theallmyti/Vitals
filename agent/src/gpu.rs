@@ -61,7 +61,7 @@ fn read(nvml: &Nvml) -> Result<GpuStats, NvmlError> {
     })
 }
 
-/// Helper mode (`nexus gpu [every_ms]`): print readings as JSON lines.
+/// Helper mode (`vitals gpu [every_ms]`): print readings as JSON lines.
 /// Without `every_ms` it prints one reading and exits. Exit code 1: no NVIDIA GPU.
 pub fn run_helper(every_ms: Option<u64>) -> i32 {
     let Ok(nvml) = Nvml::init() else {

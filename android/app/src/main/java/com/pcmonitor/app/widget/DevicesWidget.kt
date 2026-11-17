@@ -100,7 +100,7 @@ class DevicesWidget : AppWidgetProvider() {
         /** One line for a 1-cell-high widget: the worst problem, or how many are online. */
         private fun compact(context: Context, devices: List<Device>): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_compact)
-            views.setImageViewBitmap(R.id.widget_title, pixelText(context, "NEXUS", 11f, 0xFFFACC15.toInt()))
+            views.setImageViewBitmap(R.id.widget_title, pixelText(context, "VITALS", 11f, 0xFFFACC15.toInt()))
             val worst = devices.firstOrNull { it.problem() != null }
             val online = devices.count { it.isOnline }
             val (text, color) = when {
@@ -126,13 +126,13 @@ class DevicesWidget : AppWidgetProvider() {
             views.removeAllViews(R.id.widget_cards)
             devices.take(cards).forEach { views.addView(R.id.widget_cards, card(context, it)) }
 
-            views.setImageViewBitmap(R.id.widget_title, pixelText(context, "NEXUS", 11f, 0xFFFACC15.toInt()))
+            views.setImageViewBitmap(R.id.widget_title, pixelText(context, "VITALS", 11f, 0xFFFACC15.toInt()))
             views.setViewVisibility(R.id.widget_empty, if (devices.isEmpty()) View.VISIBLE else View.GONE)
             // Empty list right after a cold start usually means "still loading", not "signed out".
             val signedIn = !(context.applicationContext as PCMonitorApplication).userPreferencesRepository.getSessionToken().isNullOrBlank()
             views.setTextViewText(
                 R.id.widget_empty,
-                if (signedIn) "Loading your computers…" else "Open Nexus and sign in to see your computers here."
+                if (signedIn) "Loading your computers…" else "Open Vitals and sign in to see your computers here."
             )
             views.setTextViewText(R.id.widget_summary, summary(devices))
             val more = devices.size - cards

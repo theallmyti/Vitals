@@ -7,7 +7,7 @@ if (-not (Test-Path $iscc)) {
     throw "ISCC.exe not found"
 }
 Write-Host "Compiling setup installer..."
-& $iscc /Q installer\nexus.iss
+& $iscc /Q installer\vitals.iss
 Write-Host "Compiling uninstaller..."
-& $iscc /Q installer\nexus-uninstall.iss
+& $iscc /Q installer\vitals-uninstall.iss
 Write-Host "Inno Setup compilation complete."

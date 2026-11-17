@@ -3,8 +3,8 @@
 //! replaced by a new one automatically, so pairing keeps working until it succeeds or is cancelled.
 //!
 //! Two front ends:
-//! - Terminal: `nexus pair [config]` prints the QR code with block characters.
-//! - Installer window: `nexus pair --ui <dir> [config]` writes `qr.bmp` (black on white)
+//! - Terminal: `vitals pair [config]` prints the QR code with block characters.
+//! - Installer window: `vitals pair --ui <dir> [config]` writes `qr.bmp` (black on white)
 //!   and `status.txt` into <dir> every second; the setup program shows them with a countdown.
 //!   Creating `<dir>\cancel` stops it.
 //!
@@ -23,7 +23,7 @@ use qrcode::{Color, QrCode};
 
 /// What the legacy QR code contains. The site and app scanners read the code after the prefix or from the URL.
 #[allow(dead_code)]
-pub const QR_PREFIX: &str = "NEXUS-PAIR:";
+pub const QR_PREFIX: &str = "VITALS-PAIR:";
 /// FR-12: codes expire after 10 minutes.
 const CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
 /// QR image: pixels per module and the white margin (4 modules is the QR standard's quiet zone).
@@ -141,7 +141,7 @@ impl Ui {
                 println!("  Code: {}", spaced(code));
                 println!();
                 println!(
-                    "  Scan with your phone camera or Google Lens to open Nexus (or download the APK)."
+                    "  Scan with your phone camera or Google Lens to open Vitals (or download the APK)."
                 );
                 println!("  Or enter the code manually in the app: {}", spaced(code));
                 println!("  (A new code appears automatically if this one expires).");
@@ -188,7 +188,7 @@ async fn connect(url: &str, ui: &Ui) -> ConvexClient {
                     "error",
                     "",
                     0,
-                    "Cannot reach Nexus. Check the internet connection; retrying...",
+                    "Cannot reach Vitals. Check the internet connection; retrying...",
                 );
                 tokio::time::sleep(delay).await;
                 delay = (delay * 2).min(Duration::from_secs(30));
@@ -204,7 +204,7 @@ pub async fn run(path: &Path, ui: Ui, skip_if_paired: bool) {
         let _ = fs::remove_file(dir.join("cancel"));
         let _ = fs::remove_file(dir.join("qr.bmp"));
     }
-    ui.status("connecting", "", 0, "Connecting to Nexus...");
+    ui.status("connecting", "", 0, "Connecting to Vitals...");
     let mut config = match crate::config::Config::load(path) {
         Ok(c) => c,
         Err(e) => {
@@ -224,7 +224,7 @@ pub async fn run(path: &Path, ui: Ui, skip_if_paired: bool) {
     let mut client = connect(&config.convex_url, &ui).await;
 
     // Only skip if explicitly requested (e.g. Inno Setup background installer upgrade check).
-    // If user runs `nexus pair` or uses the tray, always proceed so they can connect or re-pair.
+    // If user runs `vitals pair` or uses the tray, always proceed so they can connect or re-pair.
     if skip_if_paired {
         let mut hello = BTreeMap::new();
         hello.insert("secretHash".to_string(), text(&secret_hash));
@@ -293,7 +293,7 @@ pub async fn run(path: &Path, ui: Ui, skip_if_paired: bool) {
                 "paired",
                 &code,
                 0,
-                "Paired. Nexus will now start monitoring this computer.",
+                "Paired. Vitals will now start monitoring this computer.",
             );
             if matches!(ui, Ui::Terminal) {
                 tokio::time::sleep(Duration::from_secs(3)).await;
@@ -338,7 +338,7 @@ pub async fn run_gui_mode(
         }
     };
 
-    update("connecting", "", 0, "Connecting to Nexus...");
+    update("connecting", "", 0, "Connecting to Vitals...");
 
     let mut config = match crate::config::Config::load(path) {
         Ok(c) => c,
@@ -371,7 +371,7 @@ pub async fn run_gui_mode(
         {
             Ok(Ok(c)) => break c,
             _ => {
-                update("error", "", 0, "Connecting to Nexus backend...");
+                update("error", "", 0, "Connecting to Vitals backend...");
                 tokio::time::sleep(Duration::from_secs(3)).await;
             }
         }
@@ -501,8 +501,8 @@ pub async fn run_gui_mode(
     }
 }
 
-/// `nexus unpair [config]`, run by the uninstaller: removes this device and its
-/// history from Nexus. Always exits 0 so an offline computer can still be uninstalled.
+/// `vitals unpair [config]`, run by the uninstaller: removes this device and its
+/// history from Vitals. Always exits 0 so an offline computer can still be uninstalled.
 pub async fn unpair(path: &Path) {
     let Ok(config) = crate::config::Config::load(path) else {
         println!("No config found; nothing to remove online.");
@@ -523,10 +523,10 @@ pub async fn unpair(path: &Path) {
     };
     match tokio::time::timeout(Duration::from_secs(20), removed).await {
         Ok(Some(FunctionResult::Value(Value::Boolean(true)))) => {
-            println!("Removed this computer from Nexus.")
+            println!("Removed this computer from Vitals.")
         }
         Ok(Some(FunctionResult::Value(_))) => println!("This computer was already removed."),
-        _ => println!("Could not reach Nexus; remove this computer from the dashboard later."),
+        _ => println!("Could not reach Vitals; remove this computer from the dashboard later."),
     }
 }
 

@@ -45,15 +45,44 @@ class UserPreferencesRepository(private val context: Context) {
         try {
             val keyGenParameterSpec = androidx.security.crypto.MasterKeys.AES256_GCM_SPEC
             val masterKeyAlias = androidx.security.crypto.MasterKeys.getOrCreate(keyGenParameterSpec)
-            androidx.security.crypto.EncryptedSharedPreferences.create(
-                "nexus_encrypted_session",
-                masterKeyAlias,
-                context,
-                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            val open = { name: String ->
+                androidx.security.crypto.EncryptedSharedPreferences.create(
+                    name,
+                    masterKeyAlias,
+                    context,
+                    androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+            }
+            open("vitals_encrypted_session").also { it.adoptLegacySession(LEGACY_ENCRYPTED_PREFS) { open(LEGACY_ENCRYPTED_PREFS) } }
         } catch (e: Exception) {
-            context.getSharedPreferences("nexus_session_fallback", Context.MODE_PRIVATE)
+            context.getSharedPreferences("vitals_session_fallback", Context.MODE_PRIVATE).also {
+                it.adoptLegacySession(LEGACY_FALLBACK_PREFS) {
+                    context.getSharedPreferences(LEGACY_FALLBACK_PREFS, Context.MODE_PRIVATE)
+                }
+            }
+        }
+    }
+
+    /**
+     * Before the rename the session lived in "nexus_*" files. Move the token over once, so an
+     * app update doesn't sign everyone out, then delete the old file (it holds the same token).
+     * The file is checked on disk first: opening a missing one would create it.
+     */
+    private fun android.content.SharedPreferences.adoptLegacySession(
+        legacyName: String,
+        openLegacy: () -> android.content.SharedPreferences
+    ) {
+        val legacyFile = java.io.File(context.applicationInfo.dataDir, "shared_prefs/$legacyName.xml")
+        if (!legacyFile.exists()) return
+        try {
+            val token = openLegacy().getString("auth_token", null)
+            if (token != null && !contains("auth_token")) {
+                edit().putString("auth_token", token).commit()
+            }
+            context.deleteSharedPreferences(legacyName)
+        } catch (e: Exception) {
+            // Unreadable (e.g. its key was lost): leave it; the user signs in again as before.
         }
     }
 
@@ -75,6 +104,8 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     companion object {
+        private const val LEGACY_ENCRYPTED_PREFS = "nexus_encrypted_session"
+        private const val LEGACY_FALLBACK_PREFS = "nexus_session_fallback"
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
         val USER_ID = stringPreferencesKey("user_id")

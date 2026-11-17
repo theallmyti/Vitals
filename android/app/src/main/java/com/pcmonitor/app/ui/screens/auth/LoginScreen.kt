@@ -94,7 +94,7 @@ fun LoginScreen(
                 AppLogo(size = 72.dp)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "NEXUS",
+                    text = "VITALS",
                     fontFamily = PixelFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,

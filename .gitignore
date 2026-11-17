@@ -46,3 +46,6 @@ dashboard/
 ANDROID_INTEGRATION_GUIDE.md
 
 _nexus_ref/
+
+# Local Cloudflare CLI cache (account details)
+.cloudflare/

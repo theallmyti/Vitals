@@ -1,8 +1,8 @@
-# Nexus
+# Vitals
 
 A lightweight hardware monitor for a small fleet of personal machines: Windows laptops, a Linux home server and a Raspberry Pi. A small Rust **agent** runs on each machine and reports to a **Convex** cloud backend. The **Android app** shows live readings (CPU, per-core temperatures, GPU, RAM, battery, drives) and sends push alerts.
 
-**Download:** [GitHub Releases](https://github.com/theallmyti/Nexus/releases): the Windows installer, Linux installers and the Android app.
+**Download:** [GitHub Releases](https://github.com/theallmyti/Vitals/releases): the Windows installer, Linux installers and the Android app.
 
 ---
 
@@ -25,7 +25,7 @@ A lightweight hardware monitor for a small fleet of personal machines: Windows l
 
 ## Why it exists
 
-Checking temperatures, load or battery means sitting at each machine. When a machine overheats or goes offline while nobody is at home, nobody knows. Nexus puts every machine on one screen and, once alerts land, tells you when something goes wrong.
+Checking temperatures, load or battery means sitting at each machine. When a machine overheats or goes offline while nobody is at home, nobody knows. Vitals puts every machine on one screen and, once alerts land, tells you when something goes wrong.
 
 Design goals:
 
@@ -181,12 +181,12 @@ A device counts as **online** when its last push is under 3 minutes old.
 | `cputemp.rs` | Windows CPU package temperature through the PawnIO driver (AMD Zen and Intel) |
 | `battery.rs` | Charge, charging state, health, power draw and cycle count |
 | `dashboard.rs` | Container counts from the home-server dashboard, so the agent never needs the Docker socket |
-| `service.rs` | Runs as a Windows service; config and log live in `%ProgramData%\Nexus` |
+| `service.rs` | Runs as a Windows service; config and log live in `%ProgramData%\Vitals` |
 | `logging.rs` | Logs to the terminal, or to a file that rotates at 5 MB when running as a service |
 
 Design notes:
 
-- **GPU in a helper process.** NVIDIA's library adds about 17 MB and can't be unloaded on Windows. The agent never loads it itself: it runs a copy of itself (`nexus gpu`) that streams readings while live and takes one-shot readings every 30 s while idle.
+- **GPU in a helper process.** NVIDIA's library adds about 17 MB and can't be unloaded on Windows. The agent never loads it itself: it runs a copy of itself (`vitals gpu`) that streams readings while live and takes one-shot readings every 30 s while idle.
 - **Windows modes.** In *no-driver* mode the agent runs as a normal user and skips CPU temperature. In *full* mode it runs as a service with the PawnIO driver and reads the CPU package temperature straight from the processor.
 - **Graceful degradation.** No NVIDIA driver, no battery or no temperature sensors means that data is left out. The rest keeps running, and the agent reports what it can read as `capabilities` when it registers.
 
@@ -247,27 +247,27 @@ erDiagram
 
 ## Install
 
-Get the files from the newest release on [GitHub Releases](https://github.com/theallmyti/Nexus/releases). Releases are marked *Pre-release*; take the top one.
+Get the files from the newest release on [GitHub Releases](https://github.com/theallmyti/Vitals/releases) (the one marked *Latest*).
 
 ### 1. Phone app (Android)
 
-1. Download `nexus-app-<version>.apk` on your phone.
+1. Download `vitals-app-<version>.apk` on your phone.
 2. Open it. If Android asks, allow your browser or file manager to *install unknown apps*.
-3. Open **Nexus**, create an account or sign in.
+3. Open **Vitals**, create an account or sign in.
 
 ### 2. Windows (10 and 11, 64-bit)
 
-1. Download and run `nexus-setup-<version>.exe`. Windows asks for administrator approval.
+1. Download and run `vitals-setup-<version>.exe`. Windows asks for administrator approval.
 2. Tick **I agree** and press **Install**. **Customize location and options** lets you choose:
    - **Show CPU temperature**: installs the signed PawnIO driver. Needed for CPU and per-core temperatures; without it the agent still reports load, clocks, RAM, GPU, battery and drives.
    - **Start in the system tray on login**: the tray icon (about 15 MB of RAM).
-   - **Add Nexus to PATH**: lets you type `nexus` in any terminal.
+   - **Add Vitals to PATH**: lets you type `vitals` in any terminal.
 3. When the pairing screen shows a QR code and a 6-character code, scan the QR code with the app (or your phone camera), or type the code in the app under **Add Device**.
-4. Done. The agent runs as the `NexusAgent` Windows service and starts with Windows.
+4. Done. The agent runs as the `VitalsAgent` Windows service and starts with Windows.
 
 **Upgrade:** run the newer installer; it upgrades in place and keeps the pairing.
-**Pair again later:** right-click the tray icon, then **Pair Device...**, or run `nexus pair` in an admin terminal.
-**Uninstall:** *Settings → Apps → Nexus Agent → Uninstall* (or `nexus-uninstall.exe`). This also removes the computer from your account.
+**Pair again later:** run `vitals pair` in an admin terminal.
+**Uninstall:** *Settings → Apps → Vitals Agent → Uninstall* (or `vitals-uninstall.exe`). This also removes the computer from your account.
 
 ### 3. Linux (Ubuntu, Debian, Fedora, Arch, Raspberry Pi OS, ...)
 
@@ -275,24 +275,38 @@ Needs systemd. Pick the file for your processor (`uname -m` prints it):
 
 ```sh
 # x86-64 PCs and servers
-curl -LO https://github.com/theallmyti/Nexus/releases/download/v0.2.5/nexus-0.2.5-linux-x86_64.run
-sudo sh nexus-0.2.5-linux-x86_64.run
+curl -LO https://github.com/theallmyti/Vitals/releases/download/v<version>/vitals-<version>-linux-amd64.run
+sudo sh vitals-<version>-linux-amd64.run
 
 # Raspberry Pi 3/4/5 and other ARM64 (aarch64)
-curl -LO https://github.com/theallmyti/Nexus/releases/download/v0.2.5/nexus-0.2.5-linux-aarch64.run
-sudo sh nexus-0.2.5-linux-aarch64.run
+curl -LO https://github.com/theallmyti/Vitals/releases/download/v<version>/vitals-<version>-linux-arm64.run
+sudo sh vitals-<version>-linux-arm64.run
 ```
 
-The installer copies the agent to `/opt/nexus`, links the `nexus` command into `/usr/local/bin`, writes `/etc/nexus/config.toml`, shows a QR code and a code in the terminal to pair, and starts the `nexus` systemd service.
+The installer copies the agent to `/opt/vitals`, links the `vitals` command into `/usr/local/bin`, writes `/etc/vitals/config.toml`, shows a QR code and a code in the terminal to pair, and starts the `vitals` systemd service.
 
 ```sh
-systemctl status nexus          # is it running?
-journalctl -u nexus -f          # follow the agent's log
-sudo systemctl restart nexus    # restart (same as: sudo nexus restart)
+systemctl status vitals          # is it running?
+journalctl -u vitals -f          # follow the agent's log
+sudo systemctl restart vitals    # restart (same as: sudo vitals restart)
 ```
 
 **Upgrade:** run the newer `.run` file the same way.
-**Uninstall:** `sudo sh /opt/nexus/uninstall.sh`. This also removes the computer from your account.
+**Uninstall:** `sudo sh /opt/vitals/uninstall.sh`. This also removes the computer from your account.
+
+### Upgrading from Nexus
+
+Vitals was called **Nexus** up to version 0.2.5. Nothing is lost when you move over:
+
+- **Auto-update** brings a Nexus agent to the newest Vitals code (releases also carry the binary
+  under its old name, `nexus.exe` / `nexus-linux-<arch>`, for exactly this). It keeps running from
+  the old folders (`C:\Program Files\Nexus`, `%ProgramData%\Nexus`; `/opt/nexus`, `/etc/nexus`) under
+  the old service name until you run the new installer.
+- **The new installer** (`vitals-setup-<version>.exe` or the `.run` file) moves everything over:
+  it copies the config with the device secret (so the computer stays paired, with its history),
+  replaces the `NexusAgent` / `nexus` service with `VitalsAgent` / `vitals`, and removes the old
+  folders, shortcuts and PATH entry. Don't run the old Nexus uninstaller first: it unpairs the computer.
+- **The phone app** keeps you signed in after updating, and still opens `nexus://` pairing links.
 
 ### Checksums
 
@@ -302,37 +316,37 @@ Every release has a `SHA256SUMS` file. To check a download:
 sha256sum -c SHA256SUMS --ignore-missing        # Linux
 ```
 ```powershell
-Get-FileHash .\nexus-setup-0.2.5.exe -Algorithm SHA256   # Windows: compare with SHA256SUMS
+Get-FileHash .\vitals-setup-<version>.exe -Algorithm SHA256   # Windows: compare with SHA256SUMS
 ```
 
 ---
 
 ## Commands
 
-Run `nexus help` at any time to see this list on the computer itself. On Windows use an admin terminal for `restart`, `pair`, `unpair` and `update`; on Linux put `sudo` in front of them.
+Run `vitals help` at any time to see this list on the computer itself. On Windows use an admin terminal for `restart`, `pair`, `unpair` and `update`; on Linux put `sudo` in front of them.
 
 | Command | What it does |
 |---|---|
-| `nexus status` | Is the agent running? Shows the mode, last upload and live readings |
-| `nexus pause [MINUTES]` | Stop sending data for a while (default 24 hours) |
-| `nexus resume` | Start sending data again |
-| `nexus restart` | Restart the background service |
-| `nexus pair` | Link this computer to your account (QR code + code). `--skip-if-paired` does nothing if already linked; on Windows `--gui` opens the pairing window |
-| `nexus unpair` | Remove this computer from your account |
-| `nexus update` | Download and install the newest release |
-| `nexus sensors` | List the temperatures, clocks and per-core readings the agent can see |
-| `nexus version` | Print the installed version |
-| `nexus help` | Show all commands |
+| `vitals status` | Is the agent running? Shows the mode, last upload and live readings |
+| `vitals pause [MINUTES]` | Stop sending data for a while (default 24 hours) |
+| `vitals resume` | Start sending data again |
+| `vitals restart` | Restart the background service |
+| `vitals pair` | Link this computer to your account (QR code + code). `--skip-if-paired` does nothing if already linked; on Windows `--gui` opens the pairing window |
+| `vitals unpair` | Remove this computer from your account |
+| `vitals update` | Download and install the newest release |
+| `vitals sensors` | List the temperatures, clocks and per-core readings the agent can see |
+| `vitals version` | Print the installed version |
+| `vitals help` | Show all commands |
 
 Examples:
 
 ```sh
-nexus status
-nexus pause 60      # pause for one hour
-sudo nexus pair     # Linux; on Windows run "nexus pair" in an admin terminal
+vitals status
+vitals pause 60      # pause for one hour
+sudo vitals pair     # Linux; on Windows run "vitals pair" in an admin terminal
 ```
 
-On Windows, `nexus` works in any terminal if you chose **Add Nexus to PATH** during setup; otherwise use the full path, `"C:\Program Files\Nexus\nexus.exe"`. An unknown command prints a hint to run `nexus help`.
+On Windows, `vitals` works in any terminal if you chose **Add Vitals to PATH** during setup; otherwise use the full path, `"C:\Program Files\Vitals\vitals.exe"`. An unknown command prints a hint to run `vitals help`.
 
 ---
 
@@ -357,6 +371,30 @@ cargo run -- pair     # run interactive pairing flow
 | `live_interval_secs` | yes | Seconds between samples and live pushes (default 1) |
 | `device_secret` | auto | Generated and saved on first run with restricted 0600 permissions; never share it |
 | `dashboard_url` | no (Pi only) | Home-server `/api/system` URL for Docker counts |
+
+### Releasing an update (pushes to every device)
+
+One tag ships Windows, Linux and Android, and installed copies update themselves:
+
+1. Set the same version in `agent/Cargo.toml`, `installer/vitals.iss` (`AppVersion`) and
+   `android/app/build.gradle.kts` (`versionName`; `versionCode` follows it). Commit.
+2. If the release adds or changes a Convex function, deploy the backend first: `cd convex && npx convex deploy`.
+3. `git tag v<version> && git push origin v<version>`.
+
+The Release workflow builds everything, publishes one GitHub Release, then calls
+`releases:publish`. From that moment:
+
+- **Agents** (Windows, Linux) are subscribed to `releases:latest`, so each one starts within a minute
+  (spread per device), downloads its binary, checks it against `SHA256SUMS`, swaps it in and
+  restarts the service. Offline PCs update when they reconnect; a 6-hourly GitHub check backs this up.
+  `auto_update = false` in `config.toml` opts a PC out.
+- **The app** checks on every open and shows *Update available*. Update downloads the APK, checks
+  its SHA-256 and opens Android's installer; the user confirms once (on Android 12+ later updates
+  may not ask). Apps on 0.2.5 or older have no updater: install the 1.0.0 APK by hand once.
+
+Repository secrets the workflow needs: `CONVEX_URL`, `CONVEX_DEPLOY_KEY`, `ANDROID_KEYSTORE_BASE64`
+(see the top of `.github/workflows/release.yml`). Every APK must be signed with the key that signed
+the first one, or phones refuse the update.
 
 ### Backend
 
@@ -391,7 +429,7 @@ Measured across real hardware targets per [`Testing.md:42`](docs/Testing.md) and
 | **Live RAM (RSS)** (1s streaming, viewer active) | < 25 MB | 17.6 MB | 13.9 MB | 12.1 MB | **PASS** |
 | **Idle CPU** (10-min average) | < 0.5 % of 1 core | 0.08 % | 0.04 % | 0.12 % | **PASS** |
 | **Live CPU** (10-min average) | < 1.0 % of 1 core | 0.32 % | 0.21 % | 0.48 % | **PASS** |
-| **Binary Size** (Release build) | < 15 MB | 8.4 MB (`nexus.exe`) | 5.2 MB (`nexus`) | 4.8 MB (`nexus`) | **PASS** |
+| **Binary Size** (Release build) | < 15 MB | 8.4 MB (`vitals.exe`) | 5.2 MB (`vitals`) | 4.8 MB (`vitals`) | **PASS** |
 | **24 h Soak Stability** | 0 crashes, 0 leaks | 0 crashes, stable working set | 0 crashes, stable RSS | 0 crashes, stable RSS | **PASS** |
 | **Android Client RAM** | < 150 MB | 88 MB (cold launch) → 104 MB (live Compose gauges) | | | **PASS** |
 | **Android Client CPU** | < 5 % | 1.8 % during 1s live streaming | | | **PASS** |

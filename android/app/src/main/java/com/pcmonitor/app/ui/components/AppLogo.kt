@@ -16,7 +16,7 @@ fun AppLogo(
 ) {
     Image(
         painter = painterResource(id = R.drawable.app_logo),
-        contentDescription = "Nexus Logo",
+        contentDescription = "Vitals Logo",
         modifier = modifier.size(size)
     )
 }

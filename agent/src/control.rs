@@ -1,4 +1,4 @@
-//! Local control and status IPC via JSON files in data_dir (%ProgramData%\Nexus).
+//! Local control and status IPC via JSON files in data_dir (%ProgramData%\Vitals).
 //! Bridges the background service (Session 0) and the user desktop tray (Session 1).
 #![cfg_attr(not(windows), allow(dead_code))]
 
@@ -54,7 +54,7 @@ pub fn read_control(data_dir: &Path) -> PauseState {
         Err(_) => return PauseState::default(),
     };
 
-    // control.json is writable by every local user (so the tray and `nexus pause` work without
+    // control.json is writable by every local user (so the tray and `vitals pause` work without
     // admin). Never trust its end time: a pause ends at most MAX_PAUSE_SECS after the file was
     // last written, so a hand-edited "paused forever" can't silence monitoring indefinitely.
     if state.paused {
@@ -129,14 +129,17 @@ mod tests {
         // "paused forever" (no end time) -> 24 h after the file was written
         assert_eq!(cap_pause_end(None, written), written + MAX_PAUSE_SECS);
         // an end date years away -> still 24 h
-        assert_eq!(cap_pause_end(Some(u64::MAX), written), written + MAX_PAUSE_SECS);
+        assert_eq!(
+            cap_pause_end(Some(u64::MAX), written),
+            written + MAX_PAUSE_SECS
+        );
         // a normal 1-hour pause is kept as is
         assert_eq!(cap_pause_end(Some(written + 3600), written), written + 3600);
     }
 
     #[test]
     fn test_pause_expiration() {
-        let temp = std::env::temp_dir().join(format!("nexus_test_{}", now_secs()));
+        let temp = std::env::temp_dir().join(format!("vitals_test_{}", now_secs()));
         let _ = fs::create_dir_all(&temp);
 
         // Pause for 2 seconds to avoid subsecond boundary rollover
@@ -155,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_clear_pause() {
-        let temp = std::env::temp_dir().join(format!("nexus_test_clear_{}", now_secs()));
+        let temp = std::env::temp_dir().join(format!("vitals_test_clear_{}", now_secs()));
         let _ = fs::create_dir_all(&temp);
 
         set_pause(&temp, None, "indefinite");

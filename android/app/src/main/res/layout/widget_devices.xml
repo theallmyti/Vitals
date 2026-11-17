@@ -29,7 +29,7 @@
             android:layout_marginStart="8dp"
             android:adjustViewBounds="true"
             android:scaleType="fitStart"
-            android:contentDescription="Nexus" />
+            android:contentDescription="Vitals" />
 
         <TextView
             android:id="@+id/widget_summary"
@@ -56,7 +56,7 @@
         android:layout_height="wrap_content"
         android:background="@drawable/widget_card"
         android:padding="12dp"
-        android:text="Open Nexus and sign in to see your computers here."
+        android:text="Open Vitals and sign in to see your computers here."
         android:textColor="#6D5D4B"
         android:textSize="12sp"
         android:visibility="gone" />

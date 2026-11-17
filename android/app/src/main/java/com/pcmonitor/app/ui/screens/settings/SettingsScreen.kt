@@ -183,7 +183,7 @@ fun SettingsScreen(
 
             SettingsMenuItem(
                 icon = Icons.Default.Info,
-                title = "About Nexus",
+                title = "About Vitals",
                 onClick = { showAboutDialog = true }
             )
 
@@ -322,7 +322,7 @@ fun SettingsScreen(
                     AppLogo(size = 72.dp)
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Nexus ${appVersion(context)}\nHardware monitoring for your computers\nMIT License",
+                        text = "Vitals ${appVersion(context)}\nHardware monitoring for your computers\nMIT License",
                         fontFamily = ReadableFontFamily,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 22.sp,

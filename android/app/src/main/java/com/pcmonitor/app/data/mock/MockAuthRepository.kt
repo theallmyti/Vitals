@@ -27,7 +27,7 @@ class MockAuthRepository(
 
     companion object {
         const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
-        private const val OFFLINE = "Can't reach Nexus. Check your internet connection and try again."
+        private const val OFFLINE = "Can't reach Vitals. Check your internet connection and try again."
     }
 
     private val httpClient = OkHttpClient()
@@ -136,7 +136,7 @@ class MockAuthRepository(
         if (data is String && data.isNotBlank()) return data
         val msg = env.optString("errorMessage").replace(Regex("^\\[Request ID: [^\\]]*]\\s*"), "")
         if (msg.isBlank() || msg.startsWith("Server Error") || msg.startsWith("Could not find")) {
-            return "Nexus couldn't reach its server. Check your connection and try again."
+            return "Vitals couldn't reach its server. Check your connection and try again."
         }
         return msg.substringAfter("ConvexError: ", msg).substringBefore('\n')
     }
@@ -176,7 +176,7 @@ class MockAuthRepository(
     override suspend fun requestPasswordReset(email: String): Result<String> {
         val clean = email.lowercase().trim()
         return callAction("auth:requestPasswordReset", mapOf("email" to clean)).map {
-            "If $clean has a Nexus account, a 6-digit code is on its way. It expires in 15 minutes."
+            "If $clean has a Vitals account, a 6-digit code is on its way. It expires in 15 minutes."
         }
     }
 

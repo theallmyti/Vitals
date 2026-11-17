@@ -4,12 +4,14 @@ import { TURNSTILE_SITEKEY } from "./turnstile";
 
 const http = httpRouter();
 
-export const GITHUB_RELEASES_URL = "https://github.com/theallmyti/Nexus/releases/latest";
+export const GITHUB_RELEASES_URL = "https://github.com/theallmyti/Vitals/releases/latest";
 
 export async function handlePair(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const code = (url.searchParams.get("code") ?? "").toUpperCase().replace(/[^23456789ABCDEFGHJKLMNPQRSTUVWXYZ]/g, "");
   const formattedCode = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+  // Still the pre-rename scheme: every installed app version handles nexus://, only Vitals builds
+  // handle vitals://. Switch once the Vitals app is what people have installed.
   const deepLink = `nexus://pair?code=${encodeURIComponent(code)}`;
 
   const html = `<!DOCTYPE html>
@@ -17,7 +19,7 @@ export async function handlePair(request: Request): Promise<Response> {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nexus — Pair Device</title>
+  <title>Vitals — Pair Device</title>
   <style>
     :root {
       --bg: #090d16;
@@ -143,23 +145,23 @@ export async function handlePair(request: Request): Promise<Response> {
 </head>
 <body>
   <div class="card">
-    <div class="logo">Nexus Fleet Monitor</div>
+    <div class="logo">Vitals Fleet Monitor</div>
     <h1>Pairing Computer</h1>
-    <p class="desc">Scan detected. Opening the Nexus mobile app to confirm this device...</p>
+    <p class="desc">Scan detected. Opening the Vitals mobile app to confirm this device...</p>
 
     <div class="code-box">
       <div class="code-label">Pairing Code</div>
       <div class="code-value">${formattedCode || "N/A"}</div>
     </div>
 
-    <a href="${deepLink}" class="btn btn-primary" id="openAppBtn">Open in Nexus App</a>
-    <a href="${GITHUB_RELEASES_URL}" class="btn btn-secondary" target="_blank" rel="noopener">Download Nexus Android APK</a>
+    <a href="${deepLink}" class="btn btn-primary" id="openAppBtn">Open in Vitals App</a>
+    <a href="${GITHUB_RELEASES_URL}" class="btn btn-secondary" target="_blank" rel="noopener">Download Vitals Android APK</a>
 
     <div class="steps">
       <h3>Don't have the app yet?</h3>
       <ol>
-        <li>Tap <strong>Download Nexus Android APK</strong> to get the latest release from GitHub.</li>
-        <li>Install the APK and open <strong>Nexus</strong>.</li>
+        <li>Tap <strong>Download Vitals Android APK</strong> to get the latest release from GitHub.</li>
+        <li>Install the APK and open <strong>Vitals</strong>.</li>
         <li>Sign in, tap <strong>Pair Device</strong>, and enter code <strong>${formattedCode || "above"}</strong>.</li>
       </ol>
     </div>
@@ -189,8 +191,9 @@ export async function handlePair(request: Request): Promise<Response> {
 }
 
 // Turnstile widget for the Android app's sign-up screen, loaded in a WebView. The app reads the
-// token through a JavaScript bridge (`NexusTurnstile`) and sends it with auth:signUp, where it is
-// verified server-side (turnstile.ts). The page holds no secret.
+// token through a JavaScript bridge (`VitalsTurnstile`) and sends it with auth:signUp, where it is
+// verified server-side (turnstile.ts). The page holds no secret. App builds from before the rename
+// use the `NexusTurnstile` bridge and call `nexusReset()`, so both names are served.
 export function handleTurnstile(): Response {
   const nonce = crypto.randomUUID().replace(/-/g, "");
   const html = `<!DOCTYPE html>
@@ -198,22 +201,23 @@ export function handleTurnstile(): Response {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nexus — Bot check</title>
+  <title>Vitals — Bot check</title>
   <style>
     html, body { margin: 0; padding: 0; background: transparent; }
     body { display: flex; justify-content: center; align-items: center; min-height: 72px; }
   </style>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=nexusTurnstileLoaded&render=explicit" async defer></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=vitalsTurnstileLoaded&render=explicit" async defer></script>
   <script nonce="${nonce}">
     function send(method, value) {
-      if (window.NexusTurnstile && typeof window.NexusTurnstile[method] === "function") {
-        window.NexusTurnstile[method](value || "");
+      var bridge = window.VitalsTurnstile || window.NexusTurnstile;
+      if (bridge && typeof bridge[method] === "function") {
+        bridge[method](value || "");
       }
     }
     // Called by api.js. The app calls reset() (via evaluateJavascript) after each sign-up attempt,
     // because a token can be redeemed only once.
-    window.nexusTurnstileLoaded = function () {
-      window.nexusWidgetId = turnstile.render("#widget", {
+    window.vitalsTurnstileLoaded = function () {
+      window.vitalsWidgetId = turnstile.render("#widget", {
         sitekey: "${TURNSTILE_SITEKEY}",
         action: "signup",
         theme: "dark",
@@ -222,9 +226,10 @@ export function handleTurnstile(): Response {
         "error-callback": function (code) { send("onError", String(code)); },
       });
     };
-    window.nexusReset = function () {
-      if (window.turnstile && window.nexusWidgetId !== undefined) turnstile.reset(window.nexusWidgetId);
+    window.vitalsReset = function () {
+      if (window.turnstile && window.vitalsWidgetId !== undefined) turnstile.reset(window.vitalsWidgetId);
     };
+    window.nexusReset = window.vitalsReset;
   </script>
 </head>
 <body><div id="widget"></div></body>

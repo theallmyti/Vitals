@@ -1,11 +1,11 @@
-NEXUS END USER LICENSE & TERMS AGREEMENT
+VITALS END USER LICENSE & TERMS AGREEMENT
 
 Maintainers: Aditya Prasad, Tirth Patel, Pratham Vasava (Vadodara, Gujarat, India)
-Privacy & Grievance Contact: contact.nexus07@gmail.com
-Official Repository: https://github.com/theallmyti/Nexus
+Privacy & Grievance Contact: contact@vitals.dpdns.org
+Official Repository: https://github.com/theallmyti/Vitals
 Last Updated: November 11, 2026
 
-PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING OR USING THE NEXUS AGENT.
+PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING OR USING THE VITALS AGENT.
 YOU MUST ACCEPT THESE TERMS IN ORDER TO INSTALL AND USE THIS SOFTWARE.
 
 PART 1: SOFTWARE LICENSE (MIT LICENSE)
@@ -32,26 +32,26 @@ SOFTWARE.
 
 PART 2: TERMS OF SERVICE & ACCEPTABLE USE
 
-1. ELIGIBILITY: You must be at least 18 years old to use the hosted Nexus service.
+1. ELIGIBILITY: You must be at least 18 years old to use the hosted Vitals service.
 2. AUTHORIZED MONITORING ONLY (STRICT REQUIREMENT):
-   You may install the Nexus Agent ONLY on computers that you own, or where you have
+   You may install the Vitals Agent ONLY on computers that you own, or where you have
    explicit authorization from the owner and where all users of the computer have
    been informed of the monitoring.
    Secret, unauthorized, or covert surveillance of any individual is strictly
    prohibited and may constitute a criminal offence under applicable computer crime
    and data privacy laws (including India's Information Technology Act, 2000 and
    DPDP Act, 2023, and the EU/UK GDPR).
-3. FREE STUDENT PROJECT: Nexus is a free, non-commercial educational project.
+3. FREE STUDENT PROJECT: Vitals is a free, non-commercial educational project.
    No uptime, SLA, or uninterrupted service is guaranteed. Features may change or
    be discontinued.
 4. INFORMATIONAL USE ONLY: Hardware readings, temperatures, and alerts are for
-   informational purposes only. Do not rely on Nexus for safety-critical, medical,
+   informational purposes only. Do not rely on Vitals for safety-critical, medical,
    industrial, or life-support applications.
 5. OPTIONAL PAWNIO KERNEL DRIVER:
    On Windows, CPU temperature monitoring optionally uses the third-party PawnIO
    driver (LGPL-2.1 by namazso). It executes at kernel level. Installation is at
    your own choice and risk. Antivirus or game anti-cheat software may flag it.
-   Nexus can run completely without it in "no-driver mode".
+   Vitals can run completely without it in "no-driver mode".
 6. LIMITATION OF LIABILITY: To the maximum extent permitted by applicable law,
    the total liability of the authors is capped at ₹1,000 (INR).
 
@@ -65,7 +65,7 @@ PART 3: PRIVACY & TELEMETRY SUMMARY
      Names of the top 5 processes by memory usage (e.g. chrome.exe) and
      system boot, sleep, and wake timestamps.
 2. ZERO SURVEILLANCE GUARANTEE:
-   Nexus strictly NEVER collects, records, or accesses:
+   Vitals strictly NEVER collects, records, or accesses:
    - Keystrokes or keyboard inputs
    - Screenshots or display recordings
    - File contents, personal documents, or directories
@@ -76,8 +76,8 @@ PART 3: PRIVACY & TELEMETRY SUMMARY
    until you initiate account deletion.
 4. YOUR RIGHTS: You have full access to self-service JSON data export (Right to
    Data Portability) and permanent cascading account deletion (Right to Erasure)
-   directly from the Nexus dashboard at any time.
+   directly from the Vitals dashboard at any time.
 
 For full, legally binding documents:
-- Terms of Service: https://github.com/theallmyti/Nexus/blob/main/docs/TERMS.md
-- Privacy Policy:   https://github.com/theallmyti/Nexus/blob/main/docs/PRIVACY.md
+- Terms of Service: https://github.com/theallmyti/Vitals/blob/main/docs/TERMS.md
+- Privacy Policy:   https://github.com/theallmyti/Vitals/blob/main/docs/PRIVACY.md

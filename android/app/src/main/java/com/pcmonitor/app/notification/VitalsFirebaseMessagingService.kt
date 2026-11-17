@@ -9,7 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class NexusFirebaseMessagingService : FirebaseMessagingService() {
+class VitalsFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
@@ -31,7 +31,7 @@ class NexusFirebaseMessagingService : FirebaseMessagingService() {
         // 1. Extract payload from data or notification block
         val data = remoteMessage.data
         val deviceId = data["deviceId"] ?: "primary-pc"
-        val title = data["title"] ?: remoteMessage.notification?.title ?: "Nexus Alert"
+        val title = data["title"] ?: remoteMessage.notification?.title ?: "Vitals Alert"
         val message = data["message"] ?: remoteMessage.notification?.body ?: "Threshold exceeded on device"
 
         // Handle canary ping
@@ -51,6 +51,6 @@ class NexusFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     companion object {
-        private const val TAG = "NexusFCM"
+        private const val TAG = "VitalsFCM"
     }
 }

@@ -1,43 +1,39 @@
-// Transactional email through Cloudflare Email Service (REST API; Convex is not a Worker, so the
-// Workers `send_email` binding is not available). Environment variables (Convex dashboard →
-// Settings → Environment Variables):
-//   CF_EMAIL_ACCOUNT_ID  Cloudflare account id
-//   CF_EMAIL_API_TOKEN   API token allowed to send email for that account
-//   EMAIL_FROM           sender on a domain onboarded to Email Sending, e.g. "noreply@example.com"
-// https://developers.cloudflare.com/email-service/api/send-emails/rest-api/
+// Transactional email (password reset codes) through Resend's REST API. Cloudflare Email Sending
+// needs the Workers Paid plan; Resend's free tier (3,000 emails/month, 100/day) is plenty here.
+// Environment variables (Convex dashboard → Settings → Environment Variables):
+//   RESEND_API_KEY  Resend API key with "Sending access" (resend.com → API Keys)
+//   EMAIL_FROM      sender on the domain verified in Resend, e.g. "Vitals <noreply@vitals.dpdns.org>"
+// https://resend.com/docs/api-reference/emails/send-email
 import { ConvexError } from "convex/values";
 
+export const RESEND_SEND_URL = "https://api.resend.com/emails";
 export const EMAIL_NOT_CONFIGURED = "Password reset email isn't set up on this server yet.";
+const SEND_FAILED = "Couldn't send the email right now. Please try again in a minute.";
 
 export function emailConfigured(): boolean {
-  return Boolean(process.env.CF_EMAIL_ACCOUNT_ID && process.env.CF_EMAIL_API_TOKEN && process.env.EMAIL_FROM);
+  return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
 }
 
 export async function sendEmail(to: string, subject: string, text: string, html: string): Promise<void> {
-  const accountId = process.env.CF_EMAIL_ACCOUNT_ID;
-  const apiToken = process.env.CF_EMAIL_API_TOKEN;
+  const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
-  if (!accountId || !apiToken || !from) throw new ConvexError(EMAIL_NOT_CONFIGURED);
+  if (!apiKey || !from) throw new ConvexError(EMAIL_NOT_CONFIGURED);
 
   let res: Response;
   try {
-    res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/email/sending/send`, {
+    res = await fetch(RESEND_SEND_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from, to, subject, text, html }),
     });
   } catch {
-    throw new ConvexError("Couldn't send the email right now. Please try again in a minute.");
+    throw new ConvexError(SEND_FAILED);
   }
-  const body = (await res.json().catch(() => null)) as
-    | { success?: boolean; errors?: { code: number; message: string }[]; result?: { permanent_bounces?: string[] } }
-    | null;
-  if (!res.ok || !body?.success) {
-    // Log the provider's reason for the owner; never echo it (or the token) to the caller.
-    console.error("email send failed", res.status, JSON.stringify(body?.errors ?? []));
-    throw new ConvexError("Couldn't send the email right now. Please try again in a minute.");
-  }
-  if (body.result?.permanent_bounces?.length) {
-    throw new ConvexError("That email address can't receive mail. Check it and try again.");
+  const body = (await res.json().catch(() => null)) as { id?: string; name?: string; message?: string } | null;
+  if (!res.ok || !body?.id) {
+    // Log the provider's reason for the owner (e.g. an unverified domain or a revoked key);
+    // never echo it, or the key, to the caller.
+    console.error("email send failed", res.status, body?.name ?? "", body?.message ?? "");
+    throw new ConvexError(SEND_FAILED);
   }
 }

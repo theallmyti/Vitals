@@ -1,9 +1,21 @@
-# Release: push a tag like v0.2.2 and this builds the Windows installer and uninstaller,
-# writes SHA256SUMS, and publishes them as a GitHub Release (auto-update task 1).
+# Release = push an update to every device. Push a tag like v0.2.6 and this:
+#   1. checks the tag matches agent/Cargo.toml, installer/vitals.iss and the app's versionName
+#   2. builds the Windows agent + installers, the Linux agent (x86-64, ARM64) + .run installers,
+#      and the Android APK (signed with the same key as every earlier APK)
+#   3. publishes them as ONE GitHub Release (a normal release: agents read /releases/latest,
+#      which ignores pre-releases), with SHA256SUMS
+#   4. tells the Vitals backend (releases:publish). Every online agent installs it within about
+#      a minute; the app shows "Update available" the next time it is opened.
 #
-# Needs the repository secret CONVEX_URL (the prod Convex URL; it is not in the repo):
-#   gh secret set CONVEX_URL < installer/convex-url.txt
-# The tag must match agent/Cargo.toml's version (checked below).
+# Repository secrets (gh secret set NAME < file):
+#   CONVEX_URL               prod Convex URL, baked into the installers   (< installer/convex-url.txt)
+#   CONVEX_DEPLOY_KEY        prod deploy key, to call releases:publish    (Convex dashboard > Settings)
+#                            optional: without it, run the printed releases:publish command by hand
+#   ANDROID_KEYSTORE_BASE64  the keystore that signed every earlier APK, base64-encoded
+#                            (base64 -w0 ~/.android/debug.keystore | gh secret set ANDROID_KEYSTORE_BASE64)
+#
+# Deploy the backend (cd convex && npx convex deploy) before the first release that needs a new
+# Convex function; this workflow only calls releases:publish, it never deploys.
 name: Release
 
 on:
@@ -14,19 +26,42 @@ permissions:
   contents: write # create the release
 
 jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        name: Tag matches every version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          agent=$(sed -n 's/^version = "\(.*\)"/\1/p' agent/Cargo.toml | head -1)
+          iss=$(sed -n 's/^#define AppVersion "\(.*\)"/\1/p' installer/vitals.iss | head -1)
+          app=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' android/app/build.gradle.kts | head -1)
+          echo "tag=$version agent=$agent installer=$iss app=$app"
+          for v in "$agent" "$iss" "$app"; do
+            [ "$v" = "$version" ] || { echo "::error::every version must be $version (agent/Cargo.toml, installer/vitals.iss, android versionName)"; exit 1; }
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # Fail here, before anything is built or published, not after the release is already live.
+      - name: Secrets and repository are ready
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          [ -n "$CONVEX_URL" ] || { echo "::error::Repository secret CONVEX_URL is not set"; exit 1; }
+          [ -n "$CONVEX_DEPLOY_KEY" ] || echo "::warning::CONVEX_DEPLOY_KEY is not set: the release is published but not pushed; run releases:publish by hand (see the last step)"
+          [ -n "$KEYSTORE" ] || { echo "::error::Repository secret ANDROID_KEYSTORE_BASE64 is not set"; exit 1; }
+          # Agents, the app and releases:publish only trust downloads from theallmyti/Vitals.
+          [ "$GITHUB_REPOSITORY" = "theallmyti/Vitals" ] || { echo "::error::rename the repository to theallmyti/Vitals first (it is $GITHUB_REPOSITORY)"; exit 1; }
+
   windows:
+    needs: versions
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-
-      - name: Tag matches agent version
-        shell: pwsh
-        run: |
-          $version = (Select-String -Path agent/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
-          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} does not match agent/Cargo.toml version $version" }
-          $iss = (Select-String -Path installer/nexus.iss -Pattern '#define AppVersion "(.+)"').Matches[0].Groups[1].Value
-          if ($iss -ne $version) { throw "installer AppVersion $iss does not match $version" }
-
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -56,27 +91,159 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
-          & $iscc /Q installer/nexus.iss
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Get-ChildItem dist | Remove-Item -Force
+          & $iscc /Q installer/vitals.iss
           if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
-          & $iscc /Q installer/nexus-uninstall.iss
+          & $iscc /Q installer/vitals-uninstall.iss
           if ($LASTEXITCODE -ne 0) { throw "uninstaller build failed" }
-          Copy-Item agent/target/release/nexus.exe dist/nexus.exe
+          Copy-Item agent/target/release/vitals.exe dist/vitals.exe
+          # The same binary under its pre-rename name: Nexus agents (<= 0.2.5) only auto-update
+          # from nexus.exe, so this is how they get Vitals. Keep it until no Nexus agents remain.
+          # Do not add any other asset whose name contains "windows-x86_64" or starts with
+          # "nexus-setup-": 0.2.5 agents would take it for their binary.
+          Copy-Item agent/target/release/vitals.exe dist/nexus.exe
           Remove-Item installer/convex-url.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/*
+          if-no-files-found: error
+
+  linux:
+    needs: versions
+    name: linux (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install musl build tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends musl-tools
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+          key: ${{ matrix.arch }}-musl
+      - name: Build agent
+        working-directory: agent
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package (.run installer + auto-update binaries)
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: |
+          [ -n "$CONVEX_URL" ] || { echo "::error::Repository secret CONVEX_URL is not set"; exit 1; }
+          printf '%s' "$CONVEX_URL" > installer/convex-url.txt
+          mkdir -p dist && rm -f dist/*
+          # Writes vitals-<v>-linux-<amd64|arm64>.run, vitals-linux-<arch>, nexus-linux-<arch>
+          # (the name 0.2.5 agents look for) and vitals-uninstall.sh.
+          sh installer/linux/make-run.sh ${{ matrix.arch }} agent/target/${{ matrix.target }}/release/vitals
+          rm installer/convex-url.txt
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  android:
+    needs: versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key from secret
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          [ -n "$KEYSTORE" ] || { echo "::error::Repository secret ANDROID_KEYSTORE_BASE64 is not set"; exit 1; }
+          # Phones only accept an update signed with the key of the installed app.
+          mkdir -p ~/.android
+          printf '%s' "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+      - name: Test and build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+          mkdir -p ../dist
+          cp app/build/outputs/apk/debug/app-debug.apk "../dist/vitals-app-${{ needs.versions.outputs.version }}.apk"
+          rm ~/.android/debug.keystore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: [versions, windows, linux, android]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.versions.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
 
       - name: SHA256SUMS
-        shell: pwsh
         working-directory: dist
         run: |
-          Get-ChildItem *.* | Where-Object { $_.Name -ne 'SHA256SUMS' } | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } |
-            Set-Content SHA256SUMS -Encoding ascii
-          Get-Content SHA256SUMS
+          rm -f SHA256SUMS
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
 
+      # Everything is uploaded in one call, so agents never see a release with files missing.
       - name: Publish release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/* `
-            --title "Nexus agent ${{ github.ref_name }}" `
-            --prerelease `
-            --notes "Nexus release with verified SHA-256 signatures for automatic and manual updates."
+          # Re-running a failed workflow: the release may already be up; go on to the push step.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; not re-creating it."
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Vitals $GITHUB_REF_NAME" \
+            --latest \
+            --notes "Vitals $VERSION for Windows, Linux and Android. Installed agents and apps update themselves; checksums in SHA256SUMS."
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Push the update to every device
+        working-directory: convex
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          # Without the key, this step prints the command to run from a logged-in machine:
+          #   cd convex && npx convex run --prod releases:publish '<args>'
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then PUBLISH=0; else PUBLISH=1; fi
+          npm ci --no-audit --no-fund
+          apk="vitals-app-$VERSION.apk"
+          sha=$(sed -n "s/^\([0-9a-f]\{64\}\)  $apk\$/\1/p" ../dist/SHA256SUMS)
+          code=$(echo "$VERSION" | awk -F. '{ print $1 * 10000 + $2 * 100 + $3 }')
+          args=$(printf '{"agentVersion":"%s","appVersion":"%s","appVersionCode":%s,"apkUrl":"https://github.com/%s/releases/download/%s/%s","apkSha256":"%s"}' \
+            "$VERSION" "$VERSION" "$code" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$apk" "$sha")
+          echo "$args"
+          if [ "$PUBLISH" = 1 ]; then
+            npx convex run releases:publish "$args"
+          else
+            echo "::warning::Not pushed. Run: cd convex && npx convex run --prod releases:publish '$args'"
+          fi

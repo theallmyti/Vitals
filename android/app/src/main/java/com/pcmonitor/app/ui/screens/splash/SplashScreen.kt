@@ -109,7 +109,7 @@ fun SplashScreen(
 
             // Wooden Sign with PC MONITOR
             WoodenSign(
-                text = "NEXUS"
+                text = "VITALS"
             )
 
             Spacer(modifier = Modifier.height(18.dp))

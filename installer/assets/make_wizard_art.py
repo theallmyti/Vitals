@@ -1,4 +1,4 @@
-"""Pixel-art images for the Inno Setup wizard, in the Nexus app's colours.
+"""Pixel-art images for the Inno Setup wizard, in the Vitals app's colours.
 
 wizard-image-*.bmp : tall side image on the Welcome / Finish pages (164x314 at 100 %)
 wizard-small-*.bmp : square logo in the top banner of the other pages (55x55 at 100 %)
@@ -89,7 +89,7 @@ def cat(d, ox, oy, tail=0, blink=False):
         r(o, 7, 4, 1, 1)
 
 
-def sign(img, scale, text="NEXUS"):
+def sign(img, scale, text="VITALS"):
     """Wooden sign with the pixel-font title, drawn at final resolution so the text stays crisp."""
     d = ImageDraw.Draw(img)
     d.fontmode = "1"  # no anti-aliasing: hard pixel edges

@@ -1,4 +1,4 @@
-//! Autonomous Auto-Update Engine for the Nexus Agent.
+//! Autonomous Auto-Update Engine for the Vitals Agent.
 //!
 //! Handles:
 //! 1. Checking GitHub Releases for newer versions (FR-62).
@@ -13,12 +13,13 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
-const RELEASES_API_URL: &str = "https://api.github.com/repos/theallmyti/Nexus/releases/latest";
-const USER_AGENT: &str = concat!("Nexus-Agent/", env!("CARGO_PKG_VERSION"));
+const RELEASES_API_URL: &str = "https://api.github.com/repos/theallmyti/Vitals/releases/latest";
+const USER_AGENT: &str = concat!("Vitals-Agent/", env!("CARGO_PKG_VERSION"));
 const STATE_FILE_NAME: &str = "update_state.json";
 const MAX_STARTUP_ATTEMPTS: u32 = 3;
 
@@ -78,25 +79,22 @@ pub fn parse_checksums(content: &str) -> BTreeMap<String, String> {
     map
 }
 
-/// Returns priority asset prefixes/names for the current operating system and architecture.
-pub fn target_asset_matches(asset_name: &str) -> bool {
+/// Raw agent binaries this platform can swap in, best first. Only plain binaries: an installer
+/// (`vitals-setup-*.exe`, `*.run`) swapped in as the service executable would not run as the agent.
+/// The `nexus*` names are the same binary published under the pre-rename name, so agents that
+/// still look for them keep updating; they come last so a Vitals binary always wins.
+fn platform_assets() -> &'static [&'static str] {
     #[cfg(all(windows, target_arch = "x86_64"))]
     {
-        asset_name.eq_ignore_ascii_case("nexus.exe")
-            || asset_name.contains("windows-x86_64")
-            || (asset_name.starts_with("nexus-setup-") && asset_name.ends_with(".exe"))
+        &["vitals.exe", "vitals-windows-x86_64.exe", "nexus.exe"]
     }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        asset_name == "nexus-linux-x86_64"
-            || (asset_name.contains("linux-x86_64") && asset_name.ends_with(".run"))
-            || asset_name == "nexus"
+        &["vitals-linux-x86_64", "nexus-linux-x86_64"]
     }
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
     {
-        asset_name == "nexus-linux-aarch64"
-            || (asset_name.contains("linux-aarch64") && asset_name.ends_with(".run"))
-            || asset_name == "nexus-arm64"
+        &["vitals-linux-aarch64", "nexus-linux-aarch64"]
     }
     #[cfg(not(any(
         all(windows, target_arch = "x86_64"),
@@ -104,7 +102,47 @@ pub fn target_asset_matches(asset_name: &str) -> bool {
         all(target_os = "linux", target_arch = "aarch64")
     )))]
     {
-        asset_name == "nexus"
+        &["vitals"]
+    }
+}
+
+/// True if the asset is an agent binary for this platform.
+#[cfg(test)]
+fn target_asset_matches(asset_name: &str) -> bool {
+    platform_assets()
+        .iter()
+        .any(|n| asset_name.eq_ignore_ascii_case(n))
+}
+
+/// The best agent binary in a release for this platform, whatever order GitHub lists assets in.
+pub fn pick_asset(assets: &[ReleaseAsset]) -> Option<&ReleaseAsset> {
+    platform_assets()
+        .iter()
+        .find_map(|want| assets.iter().find(|a| a.name.eq_ignore_ascii_case(want)))
+}
+
+/// PowerShell that restarts the agent service under its current or a pre-rename name
+/// (Restart-Service also starts a stopped service; names that don't exist are skipped).
+#[cfg(windows)]
+pub fn restart_service_ps() -> String {
+    let mut names = vec![crate::service::NAME];
+    names.extend(crate::service::LEGACY_NAMES);
+    format!(
+        "Restart-Service {} -ErrorAction SilentlyContinue",
+        names.join(", ")
+    )
+}
+
+/// systemd unit of this install: `vitals`, or `nexus` on a machine installed before the rename
+/// and auto-updated since (the updater swaps the binary, not the unit).
+#[cfg(not(windows))]
+pub fn systemd_unit() -> &'static str {
+    if !Path::new("/etc/systemd/system/vitals.service").exists()
+        && Path::new("/etc/systemd/system/nexus.service").exists()
+    {
+        "nexus"
+    } else {
+        "vitals"
     }
 }
 
@@ -252,17 +290,21 @@ pub fn apply_binary_swap(target_exe: &Path, new_binary: &Path) -> Result<(), Str
     Ok(())
 }
 
-/// Triggers service restart across Windows (NexusAgent) or Linux (systemd).
+/// Restarts the agent service: Windows (VitalsAgent, or its pre-rename name) or Linux (systemd).
 pub fn restart_service() -> Result<(), String> {
     #[cfg(windows)]
     {
+        let elevated = format!(
+            "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command {}'",
+            restart_service_ps()
+        );
         let status = std::process::Command::new("powershell")
             .args([
                 "-NoProfile",
                 "-WindowStyle",
                 "Hidden",
                 "-Command",
-                "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue'",
+                &elevated,
             ])
             .status()
             .map_err(|e| format!("failed to run service restart command: {e}"))?;
@@ -275,17 +317,18 @@ pub fn restart_service() -> Result<(), String> {
     }
     #[cfg(not(windows))]
     {
+        let unit = systemd_unit();
         let status = std::process::Command::new("systemctl")
-            .args(["restart", "nexus"])
+            .args(["restart", unit])
             .status();
 
         match status {
             Ok(s) if s.success() => Ok(()),
             _ => {
                 let sudo_status = std::process::Command::new("sudo")
-                    .args(["systemctl", "restart", "nexus"])
+                    .args(["systemctl", "restart", unit])
                     .status()
-                    .map_err(|e| format!("failed to restart nexus systemd service: {e}"))?;
+                    .map_err(|e| format!("failed to restart {unit} systemd service: {e}"))?;
 
                 if sudo_status.success() {
                     Ok(())
@@ -322,20 +365,20 @@ pub fn check_startup_health(data_dir: &Path, current_exe: &Path, _own_version: &
         state.attempts += 1;
         if state.attempts >= MAX_STARTUP_ATTEMPTS {
             eprintln!(
-                "Nexus: Update to {} failed {} times. Initiating rollback to {}...",
+                "Vitals: Update to {} failed {} times. Initiating rollback to {}...",
                 state.target_version, state.attempts, state.previous_version
             );
             let old_backup = current_exe.with_extension("old");
             if old_backup.exists() {
                 let _ = fs::remove_file(current_exe);
                 if fs::rename(&old_backup, current_exe).is_ok() {
-                    eprintln!("Nexus: Successfully restored previous executable. Restarting...");
+                    eprintln!("Vitals: Successfully restored previous executable. Restarting...");
                     state.status = "rolled_back".to_string();
                     write_state(data_dir, &state);
                     let _ = restart_service();
                     std::process::exit(0);
                 } else {
-                    eprintln!("Nexus: Critical - failed to restore backup executable.");
+                    eprintln!("Vitals: Critical - failed to restore backup executable.");
                 }
             }
         } else {
@@ -394,16 +437,12 @@ pub async fn check_and_apply_update(
         let checksums = parse_checksums(&checksums_text);
 
         // Find matching binary asset for current platform
-        let target_asset = release
-            .assets
-            .iter()
-            .find(|a| target_asset_matches(&a.name))
-            .ok_or_else(|| {
-                format!(
-                    "no matching asset for current platform in release {}",
-                    release.tag_name
-                )
-            })?;
+        let target_asset = pick_asset(&release.assets).ok_or_else(|| {
+            format!(
+                "no matching asset for current platform in release {}",
+                release.tag_name
+            )
+        })?;
 
         let expected_hash = checksums
             .get(&target_asset.name)
@@ -441,6 +480,72 @@ pub async fn check_and_apply_update(
     .map_err(|e| format!("update task failed: {e}"))?
 }
 
+/// Set while a check/download/swap runs, so the push watcher and the 6-hour poll never swap
+/// the binary at the same time.
+static UPDATE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// `check_and_apply_update` with a restart, unless another update is already running
+/// (then `Ok(None)`: that one will restart the service).
+pub async fn update_now(
+    data_dir: &Path,
+    current_version: &str,
+    current_exe: &Path,
+) -> Result<Option<String>, String> {
+    if UPDATE_IN_PROGRESS.swap(true, Ordering::SeqCst) {
+        return Ok(None);
+    }
+    let result = check_and_apply_update(data_dir, current_version, current_exe, true).await;
+    UPDATE_IN_PROGRESS.store(false, Ordering::SeqCst);
+    result
+}
+
+/// How long to wait before attempt `attempt` (0, 1, 2, ...) to install a release the backend
+/// just announced, or `None` to stop trying until the next announcement or 6-hour poll.
+///
+/// `spread` is a per-device number (0..=u64::MAX, stable across restarts) so that a thousand
+/// agents told at the same instant do not all hit GitHub in the same second: unauthenticated
+/// GitHub API calls are limited to 60 per hour per IP, and an office behind one IP shares that.
+/// An attempt can also find nothing new because GitHub's "latest" lags the publish by a few
+/// seconds; later attempts cover that.
+pub fn announced_update_delay(attempt: u32, spread: u64) -> Option<Duration> {
+    // First try within a minute, spread per device; then back off for GitHub lag or a bad network.
+    const BACKOFF_MIN: [u64; 5] = [2, 5, 10, 20, 30];
+    match attempt {
+        0 => Some(Duration::from_secs(spread % 60)),
+        n => BACKOFF_MIN
+            .get(n as usize - 1)
+            .map(|m| Duration::from_secs(m * 60 + spread % 30)),
+    }
+}
+
+/// Installs `announced` (from the backend's releases:latest) if it is newer than this agent,
+/// retrying on the `announced_update_delay` schedule. Returns once installed (the service is
+/// restarting), up to date, or out of attempts.
+pub async fn install_announced(
+    announced: &str,
+    data_dir: &Path,
+    current_version: &str,
+    current_exe: &Path,
+    spread: u64,
+) {
+    if !is_newer(announced, current_version) {
+        return;
+    }
+    let mut attempt = 0;
+    while let Some(wait) = announced_update_delay(attempt, spread) {
+        tokio::time::sleep(wait).await;
+        match update_now(data_dir, current_version, current_exe).await {
+            Ok(Some(ver)) => {
+                eprintln!("Vitals: updated to v{ver} (pushed); restarting service.");
+                return;
+            }
+            Ok(None) => eprintln!("Vitals: v{announced} announced but not on GitHub yet (attempt {})", attempt + 1),
+            Err(e) => eprintln!("Vitals: pushed update to v{announced} failed (attempt {}): {e}", attempt + 1),
+        }
+        attempt += 1;
+    }
+}
+
 /// Spawns the recurring background auto-update worker (every 6 hours).
 pub fn spawn_background_updater(
     data_dir: PathBuf,
@@ -457,16 +562,16 @@ pub fn spawn_background_updater(
             tokio::select! {
                 _ = stop.notified() => break,
                 _ = interval.tick() => {
-                    match check_and_apply_update(&data_dir, &current_version, &current_exe, true).await {
+                    match update_now(&data_dir, &current_version, &current_exe).await {
                         Ok(Some(ver)) => {
-                            eprintln!("Nexus: Successfully updated to v{ver} and triggered service restart.");
+                            eprintln!("Vitals: Successfully updated to v{ver} and triggered service restart.");
                             break;
                         }
                         Ok(None) => {
                             // Agent is up to date
                         }
                         Err(e) => {
-                            eprintln!("Nexus: Auto-update check error: {e}");
+                            eprintln!("Vitals: Auto-update check error: {e}");
                         }
                     }
                 }
@@ -493,22 +598,22 @@ mod tests {
     fn test_parse_checksums() {
         let content = r#"
 # Release SHA-256 Checksums
-b24e52c42319ebb5ac39cce807b7bced3ae247e7f187cb471f19adfc423a85d2  nexus-0.2.1-linux-aarch64.run
-02a462389f54a06ce01d14f2474eae79615dc39b37f9100a95f085f7d4997798 *nexus-0.2.1-linux-x86_64.run
-D3F329206E305BCE0F0E4F3EC85020D1E508D800A4D8F24283FFA0B09607C2A3  nexus-setup-0.2.1.exe
+b24e52c42319ebb5ac39cce807b7bced3ae247e7f187cb471f19adfc423a85d2  vitals-0.2.1-linux-aarch64.run
+02a462389f54a06ce01d14f2474eae79615dc39b37f9100a95f085f7d4997798 *vitals-0.2.1-linux-x86_64.run
+D3F329206E305BCE0F0E4F3EC85020D1E508D800A4D8F24283FFA0B09607C2A3  vitals-setup-0.2.1.exe
 "#;
         let map = parse_checksums(content);
         assert_eq!(map.len(), 3);
         assert_eq!(
-            map.get("nexus-0.2.1-linux-aarch64.run").unwrap(),
+            map.get("vitals-0.2.1-linux-aarch64.run").unwrap(),
             "b24e52c42319ebb5ac39cce807b7bced3ae247e7f187cb471f19adfc423a85d2"
         );
         assert_eq!(
-            map.get("nexus-0.2.1-linux-x86_64.run").unwrap(),
+            map.get("vitals-0.2.1-linux-x86_64.run").unwrap(),
             "02a462389f54a06ce01d14f2474eae79615dc39b37f9100a95f085f7d4997798"
         );
         assert_eq!(
-            map.get("nexus-setup-0.2.1.exe").unwrap(),
+            map.get("vitals-setup-0.2.1.exe").unwrap(),
             "d3f329206e305bce0f0e4f3ec85020d1e508d800a4d8f24283ffa0b09607c2a3"
         );
     }
@@ -517,22 +622,76 @@ D3F329206E305BCE0F0E4F3EC85020D1E508D800A4D8F24283FFA0B09607C2A3  nexus-setup-0.
     fn test_target_asset_matches() {
         #[cfg(all(windows, target_arch = "x86_64"))]
         {
-            assert!(target_asset_matches("nexus.exe"));
-            assert!(target_asset_matches("nexus-windows-x86_64.exe"));
-            assert!(target_asset_matches("nexus-setup-0.2.1.exe"));
-            assert!(!target_asset_matches("nexus-linux-x86_64"));
+            assert!(target_asset_matches("vitals.exe"));
+            assert!(target_asset_matches("vitals-windows-x86_64.exe"));
+            assert!(target_asset_matches("nexus.exe"), "legacy alias");
+            // Installers are not agent binaries.
+            assert!(!target_asset_matches("vitals-setup-0.2.1.exe"));
+            assert!(!target_asset_matches("vitals-uninstall.exe"));
+            assert!(!target_asset_matches("vitals-linux-x86_64"));
         }
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
-            assert!(target_asset_matches("nexus-linux-x86_64"));
-            assert!(target_asset_matches("nexus-0.2.1-linux-x86_64.run"));
-            assert!(!target_asset_matches("nexus-linux-aarch64"));
+            assert!(target_asset_matches("vitals-linux-x86_64"));
+            assert!(target_asset_matches("nexus-linux-x86_64"), "legacy alias");
+            assert!(!target_asset_matches("vitals-0.2.1-linux-amd64.run"));
+            assert!(!target_asset_matches("vitals-linux-aarch64"));
+        }
+    }
+
+    fn asset(name: &str) -> ReleaseAsset {
+        ReleaseAsset {
+            name: name.to_string(),
+            browser_download_url: format!("https://example.invalid/{name}"),
         }
     }
 
     #[test]
+    fn pick_asset_prefers_vitals_binary_over_installer_and_legacy() {
+        // GitHub lists assets alphabetically: installers and the legacy alias come first.
+        let assets: Vec<ReleaseAsset> = [
+            "SHA256SUMS",
+            "nexus-linux-x86_64",
+            "nexus.exe",
+            "vitals-0.3.0-linux-amd64.run",
+            "vitals-linux-x86_64",
+            "vitals-setup-0.3.0.exe",
+            "vitals-uninstall.exe",
+            "vitals.exe",
+        ]
+        .into_iter()
+        .map(asset)
+        .collect();
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        assert_eq!(pick_asset(&assets).unwrap().name, "vitals.exe");
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        assert_eq!(pick_asset(&assets).unwrap().name, "vitals-linux-x86_64");
+    }
+
+    #[test]
+    fn pick_asset_falls_back_to_legacy_name() {
+        let assets: Vec<ReleaseAsset> = ["SHA256SUMS", "nexus-linux-x86_64", "nexus.exe"]
+            .into_iter()
+            .map(asset)
+            .collect();
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        assert_eq!(pick_asset(&assets).unwrap().name, "nexus.exe");
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        assert_eq!(pick_asset(&assets).unwrap().name, "nexus-linux-x86_64");
+    }
+
+    #[test]
+    fn announced_update_spreads_the_fleet_then_gives_up() {
+        assert!(announced_update_delay(0, 0) < Some(Duration::from_secs(60)));
+        assert_ne!(announced_update_delay(0, 7), announced_update_delay(0, 8));
+        assert!(announced_update_delay(1, 0) >= Some(Duration::from_secs(120)));
+        assert!(announced_update_delay(5, u64::MAX).is_some());
+        assert_eq!(announced_update_delay(6, 0), None);
+    }
+
+    #[test]
     fn test_state_serialization() {
-        let temp = std::env::temp_dir().join(format!("nexus_test_state_{}", std::process::id()));
+        let temp = std::env::temp_dir().join(format!("vitals_test_state_{}", std::process::id()));
         let _ = fs::create_dir_all(&temp);
 
         let state = UpdateState {

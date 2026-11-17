@@ -24,7 +24,7 @@
         android:layout_marginStart="8dp"
         android:adjustViewBounds="true"
         android:scaleType="fitStart"
-        android:contentDescription="Nexus" />
+        android:contentDescription="Vitals" />
 
     <TextView
         android:id="@+id/widget_summary"

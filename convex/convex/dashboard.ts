@@ -3,7 +3,8 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { LIMITS, isLimited, recordEvent } from "./rateLimit";
-import { LATEST_AGENT_VERSION, isOutdated } from "./versions";
+import { isOutdated } from "./versions";
+import { currentAgentVersion } from "./releases";
 import {
   viewableDevice,
   sharedDevicesOf,
@@ -41,6 +42,7 @@ export const overview = query({
           .unique(),
       ),
     );
+    const latestAgent = await currentAgentVersion(ctx);
     const out = devices.map((d, i) => {
       let os = d.os;
       if (!os) {
@@ -62,13 +64,13 @@ export const overview = query({
         online: Boolean(isOnline),
         agentVersion: d.agentVersion ?? null,
         capabilities: d.capabilities ?? null,
-        updateAvailable: isOutdated(d.agentVersion),
+        updateAvailable: isOutdated(d.agentVersion, latestAgent),
         latest,
         // Shared with this account by its owner (view only: rename/remove-for-all are owner-only).
         shared: d.userId !== user._id,
       };
     });
-    return { now, latestAgentVersion: LATEST_AGENT_VERSION, devices: out };
+    return { now, latestAgentVersion: latestAgent, devices: out };
   },
 });
 
