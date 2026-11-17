@@ -250,7 +250,7 @@ jobs:
           # Without the key, this step prints the command to run from a logged-in machine:
           #   cd convex && npx convex run --prod releases:publish '<args>'
           if [ -z "$CONVEX_DEPLOY_KEY" ]; then PUBLISH=0; else PUBLISH=1; fi
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           apk="vitals-app-$VERSION.apk"
           sha=$(sed -n "s/^\([0-9a-f]\{64\}\)  $apk\$/\1/p" ../dist/SHA256SUMS)
           code=$(echo "$VERSION" | awk -F. '{ print $1 * 10000 + $2 * 100 + $3 }')

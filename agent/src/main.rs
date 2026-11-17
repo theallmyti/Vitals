@@ -441,7 +441,9 @@ fn watch_release(
                             warn!("releases:latest: {result:?}");
                             continue;
                         };
-                        let Some(Value::String(v)) = o.get("agentVersion") else { continue };
+                        let Some(Value::String(v)) = o.get("agentVersion") else {
+                            continue;
+                        };
                         if handled.as_deref() == Some(v.as_str()) || !update::is_newer(v, own) {
                             continue;
                         }
@@ -981,7 +983,12 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     let viewer_until = Arc::new(AtomicU64::new(0));
     watch_viewer(client.clone(), secret_hash.clone(), viewer_until.clone());
     if config.auto_update {
-        watch_release(client.clone(), &secret_hash, data_dir.clone(), current_exe.clone());
+        watch_release(
+            client.clone(),
+            &secret_hash,
+            data_dir.clone(),
+            current_exe.clone(),
+        );
     }
 
     // Container counts are fetched every 10 s (they change slowly).

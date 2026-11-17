@@ -13,8 +13,8 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
 
@@ -539,8 +539,14 @@ pub async fn install_announced(
                 eprintln!("Vitals: updated to v{ver} (pushed); restarting service.");
                 return;
             }
-            Ok(None) => eprintln!("Vitals: v{announced} announced but not on GitHub yet (attempt {})", attempt + 1),
-            Err(e) => eprintln!("Vitals: pushed update to v{announced} failed (attempt {}): {e}", attempt + 1),
+            Ok(None) => eprintln!(
+                "Vitals: v{announced} announced but not on GitHub yet (attempt {})",
+                attempt + 1
+            ),
+            Err(e) => eprintln!(
+                "Vitals: pushed update to v{announced} failed (attempt {}): {e}",
+                attempt + 1
+            ),
         }
         attempt += 1;
     }
