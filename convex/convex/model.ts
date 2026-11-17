@@ -17,6 +17,12 @@ export function normalizeCode(code: string) {
   return code.replace(/[\s-]/g, "").toUpperCase();
 }
 
+// Drops control characters, trims, and cuts to `max` characters when one is given.
+export function cleanText(s: string, max?: number): string {
+  const clean = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
+  return max === undefined ? clean : clean.slice(0, max);
+}
+
 export async function pairingByCode(ctx: Pick<QueryCtx, "db">, code: string) {
   return await ctx.db
     .query("pairingRequests")
@@ -106,6 +112,30 @@ export async function sharedDevicesOf(ctx: Pick<QueryCtx, "db">, userId: Id<"use
     .collect();
   const devices = await Promise.all(shares.map((s) => ctx.db.get(s.deviceId)));
   return devices.filter((d): d is Doc<"devices"> => d !== null && d.userId !== undefined);
+}
+
+/** Devices the user owns, then the ones shared with them. */
+export async function visibleDevicesOf(ctx: Pick<QueryCtx, "db">, userId: Id<"users">) {
+  const owned = await ctx.db
+    .query("devices")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  return [...owned, ...(await sharedDevicesOf(ctx, userId))];
+}
+
+// Offline when no summary for 3 minutes (FR-44); live data counts if under 45 s old.
+export const OFFLINE_AFTER_MS = 3 * 60 * 1000;
+export const LIVE_FRESH_MS = 45_000;
+
+export function isDeviceOnline(d: Doc<"devices">, latest: Doc<"latest"> | null | undefined, now: number): boolean {
+  return (latest != null && now - (latest.ts ?? 0) < LIVE_FRESH_MS) || now - (d.lastSeenAt ?? 0) < OFFLINE_AFTER_MS;
+}
+
+export function deviceOs(d: Doc<"devices">): string {
+  if (d.os) return d.os;
+  if (d.capabilities?.windowsMode) return "windows";
+  if (d.capabilities?.isPi) return "pi";
+  return "linux";
 }
 
 /** Everyone who should get this device's alerts: the owner first, then shared accounts. */

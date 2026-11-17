@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.data.model.Device
 import com.pcmonitor.app.data.model.DeviceType
+import com.pcmonitor.app.data.remote.ConvexHttp
 import com.pcmonitor.app.data.repository.DeviceRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
 import com.pcmonitor.app.ui.components.AppLogo
@@ -60,10 +61,7 @@ import com.pcmonitor.app.util.PairingHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 @Composable
@@ -448,17 +446,10 @@ private fun friendlyPairingError(errMsg: String): String = when {
 private suspend fun convexMutation(path: String, token: String, code: String): JSONObject? =
     withContext(Dispatchers.IO) {
         try {
-            val body = JSONObject().apply {
-                put("path", path)
-                put("args", JSONObject().apply {
-                    put("token", token)
-                    put("code", code)
-                })
-            }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-            val req = Request.Builder()
-                .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                .post(body)
-                .build()
+            val req = ConvexHttp.request(
+                "mutation", path,
+                JSONObject().put("token", token).put("code", code)
+            )
             pairingHttpClient.newCall(req).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
                 if (text.isBlank()) null else JSONObject(text)

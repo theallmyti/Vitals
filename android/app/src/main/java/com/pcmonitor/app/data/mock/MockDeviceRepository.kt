@@ -15,6 +15,7 @@ import com.pcmonitor.app.data.model.HardwareStats
 import com.pcmonitor.app.data.model.ProcessInfo
 import com.pcmonitor.app.data.model.RamStats
 import com.pcmonitor.app.data.model.UsageStats
+import com.pcmonitor.app.data.remote.ConvexHttp
 import com.pcmonitor.app.data.repository.DeviceRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
 import com.pcmonitor.app.notification.NotificationHelper
@@ -33,10 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -48,7 +46,6 @@ class MockDeviceRepository(
 
     companion object {
         private const val TAG = "DeviceRepository"
-        private const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
     }
 
     private var activeDeviceId: String = ""
@@ -75,26 +72,8 @@ class MockDeviceRepository(
         Log.i(TAG, "Alert cooldowns reset.")
     }
 
-    private val fallbackDns = object : okhttp3.Dns {
-        override fun lookup(hostname: String): List<java.net.InetAddress> {
-            return try {
-                okhttp3.Dns.SYSTEM.lookup(hostname)
-            } catch (e: Exception) {
-                if (hostname.contains("convex.cloud")) {
-                    Log.i(TAG, "Using fallback IP for $hostname")
-                    listOf(
-                        java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 14.toByte(), 131.toByte())),
-                        java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 15.toByte(), 131.toByte()))
-                    )
-                } else {
-                    throw e
-                }
-            }
-        }
-    }
-
     private val httpClient = OkHttpClient.Builder()
-        .dns(fallbackDns)
+        .dns(ConvexHttp.fallbackDns)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
@@ -135,22 +114,12 @@ class MockDeviceRepository(
 
     private suspend fun fetchDevicesFromConvex() {
         if (activeUserEmail.isBlank()) return
-        val mediaType = "application/json; charset=utf-8".toMediaType()
         try {
             var list: JSONArray? = null
             val token = userPreferencesRepository?.getSessionToken()
 
             if (!token.isNullOrBlank()) {
-                val overviewJson = JSONObject().apply {
-                    put("path", "dashboard:overview")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                    })
-                }
-                val oReq = Request.Builder()
-                    .url("$CONVEX_BASE_URL/api/query")
-                    .post(overviewJson.toString().toRequestBody(mediaType))
-                    .build()
+                val oReq = ConvexHttp.request("query", "dashboard:overview", JSONObject().put("token", token))
                 val oResp = withContext(Dispatchers.IO) { httpClient.newCall(oReq).execute() }
                 val body = oResp.body?.string()
                 oResp.close()
@@ -168,16 +137,7 @@ class MockDeviceRepository(
             }
 
             if (list == null && !token.isNullOrBlank()) {
-                val devicesReqJson = JSONObject().apply {
-                    put("path", "devices:getMyDevices")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                    })
-                }
-                val dReq = Request.Builder()
-                    .url("$CONVEX_BASE_URL/api/query")
-                    .post(devicesReqJson.toString().toRequestBody(mediaType))
-                    .build()
+                val dReq = ConvexHttp.request("query", "devices:getMyDevices", JSONObject().put("token", token))
                 val dResp = withContext(Dispatchers.IO) { httpClient.newCall(dReq).execute() }
                 if (dResp.isSuccessful) {
                     val body = dResp.body?.string()
@@ -359,18 +319,10 @@ class MockDeviceRepository(
         if (!token.isNullOrBlank()) {
             withContext(Dispatchers.IO) {
                 try {
-                    val mediaType = "application/json; charset=utf-8".toMediaType()
-                    val json = JSONObject().apply {
-                        put("path", "devices:deleteDevice")
-                        put("args", JSONObject().apply {
-                            put("token", token)
-                            put("deviceId", deviceId)
-                        })
-                    }
-                    val req = Request.Builder()
-                        .url("$CONVEX_BASE_URL/api/mutation")
-                        .post(json.toString().toRequestBody(mediaType))
-                        .build()
+                    val req = ConvexHttp.request(
+                        "mutation", "devices:deleteDevice",
+                        JSONObject().put("token", token).put("deviceId", deviceId)
+                    )
                     val resp = httpClient.newCall(req).execute()
                     resp.close()
                     Log.i(TAG, "Unpaired device $deviceId on Convex")
@@ -393,14 +345,7 @@ class MockDeviceRepository(
             runCatching {
                 val token = userPreferencesRepository?.getSessionToken()
                     ?: throw Exception("You're signed out. Sign in again.")
-                val body = JSONObject().apply {
-                    put("path", path)
-                    put("args", args.put("token", token))
-                }
-                val req = Request.Builder()
-                    .url("$CONVEX_BASE_URL/api/$kind")
-                    .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .build()
+                val req = ConvexHttp.request(kind, path, args.put("token", token))
                 httpClient.newCall(req).execute().use { resp ->
                     val env = JSONObject(resp.body?.string() ?: "{}")
                     if (env.optString("status") != "success") {
@@ -468,8 +413,6 @@ class MockDeviceRepository(
     override suspend fun startMockSimulation() {
         if (simulationJob?.isActive == true) return
         simulationJob = repositoryScope.launch {
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-
             while (isActive) {
                 delay(1000L) // 1 second real-time refresh
 
@@ -495,17 +438,10 @@ class MockDeviceRepository(
                     try {
                         val token = userPreferencesRepository?.getSessionToken()
                         if (!token.isNullOrBlank()) {
-                            val pingJson = JSONObject().apply {
-                                put("path", "devices:setViewer")
-                                put("args", JSONObject().apply {
-                                    put("token", token)
-                                    put("deviceId", queriedId)
-                                })
-                            }
-                            val pingReq = Request.Builder()
-                                .url("$CONVEX_BASE_URL/api/mutation")
-                                .post(pingJson.toString().toRequestBody(mediaType))
-                                .build()
+                            val pingReq = ConvexHttp.request(
+                                "mutation", "devices:setViewer",
+                                JSONObject().put("token", token).put("deviceId", queriedId)
+                            )
                             withContext(Dispatchers.IO) {
                                 httpClient.newCall(pingReq).execute().close()
                             }
@@ -523,17 +459,10 @@ class MockDeviceRepository(
                 try {
                     val token = userPreferencesRepository?.getSessionToken()
                     if (!token.isNullOrBlank()) {
-                        val queryJson = JSONObject().apply {
-                            put("path", "devices:getDeviceLatest")
-                            put("args", JSONObject().apply {
-                                put("token", token)
-                                put("deviceId", queriedId)
-                            })
-                        }
-                        val req = Request.Builder()
-                            .url("$CONVEX_BASE_URL/api/query")
-                            .post(queryJson.toString().toRequestBody(mediaType))
-                            .build()
+                        val req = ConvexHttp.request(
+                            "query", "devices:getDeviceLatest",
+                            JSONObject().put("token", token).put("deviceId", queriedId)
+                        )
                         val resp = withContext(Dispatchers.IO) {
                             httpClient.newCall(req).execute()
                         }

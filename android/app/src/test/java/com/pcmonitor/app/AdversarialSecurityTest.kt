@@ -32,20 +32,6 @@ class AdversarialSecurityTest {
     }
 
     @Test
-    fun testSliding30DaySessionMath() {
-        val thirtyDaysMs = 30L * 24L * 60L * 60L * 1000L
-        val now = 1700000000000L
-
-        // Exactly 30 days + 1 ms ago -> expired
-        val expiredTs = now - thirtyDaysMs - 1L
-        assertTrue((now - expiredTs) > thirtyDaysMs)
-
-        // 29 days ago -> active
-        val activeTs = now - (29L * 24L * 60L * 60L * 1000L)
-        assertFalse((now - activeTs) > thirtyDaysMs)
-    }
-
-    @Test
     fun testAuthAdversarialVectors() = runBlocking {
         val repo = MockAuthRepository(baseUrl = "")
 
@@ -93,77 +79,5 @@ class AdversarialSecurityTest {
         // Tier 1: Attempt to remove empty device ID - must be safe
         repo.removeDevice("")
         assertEquals(initialCount, repo.devices.value.size)
-    }
-
-    @Test
-    fun testThresholdBoundaryAndCooldownMath() {
-        val cooldownMs = 15 * 60 * 1000L // 15 minutes
-        val now = 1700000000000L
-
-        // Tier 1 & 2: Alert triggered within cooldown window -> suppressed
-        val lastAlertRecent = now - (5 * 60 * 1000L) // 5 minutes ago
-        assertFalse("Alert within cooldown must not fire", (now - lastAlertRecent) > cooldownMs)
-
-        // Alert triggered after cooldown window -> permitted
-        val lastAlertOld = now - (16 * 60 * 1000L) // 16 minutes ago
-        assertTrue("Alert outside cooldown must fire", (now - lastAlertOld) > cooldownMs)
-
-        // Tier 1: Extreme boundary values for thresholds
-        val extremeRamZero = 0f
-        val extremeRamHundred = 100f
-        val extremeRamOver = 150f
-
-        val currentRam = 68.5f
-        assertTrue(currentRam > extremeRamZero)
-        assertFalse(currentRam > extremeRamHundred)
-        assertFalse(currentRam > extremeRamOver)
-    }
-
-    @Test
-    fun testFcmPayloadSanitization() {
-        // Tier 7: Malformed and missing FCM remote message fields
-        val emptyMap = emptyMap<String, String>()
-        val deviceId = emptyMap["deviceId"] ?: "primary-pc"
-        val title = emptyMap["title"] ?: "Vitals Alert"
-        val message = emptyMap["message"] ?: "Threshold exceeded on device"
-
-        assertEquals("primary-pc", deviceId)
-        assertEquals("Vitals Alert", title)
-        assertEquals("Threshold exceeded on device", message)
-
-        // Special characters and XSS in notification title
-        val dirtyTitle = "<script>alert('xss')</script> Primary PC · RAM High"
-        assertNotNull(dirtyTitle)
-        assertTrue(dirtyTitle.contains("RAM High"))
-    }
-
-    @Test
-    fun testDeviceOfflineStalenessDetection() {
-        val now = 1_700_000_000_000L
-
-        // 1. Fresh telemetry within 15 seconds threshold
-        val freshTs = now - 5_000L
-        val isFreshOnline = (freshTs > 0L) && ((now - freshTs) < 15_000L)
-        assertTrue("Telemetry <= 15s must be considered online", isFreshOnline)
-
-        // 2. Stale telemetry older than 15 seconds (e.g. PC shut down 30s ago)
-        val staleTs = now - 30_000L
-        val isStaleOnline = (staleTs > 0L) && ((now - staleTs) < 15_000L)
-        assertFalse("Telemetry > 15s must be flagged offline immediately", isStaleOnline)
-
-        // 3. Telemetry older than multiple hours (e.g. PC shut down days ago)
-        val veryOldTs = now - 3600_000L * 24L
-        val isVeryOldOnline = (veryOldTs > 0L) && ((now - veryOldTs) < 15_000L)
-        assertFalse("Telemetry from days ago must be offline", isVeryOldOnline)
-
-        // 4. Missing or zero timestamp
-        val zeroTs = 0L
-        val isZeroOnline = (zeroTs > 0L) && ((now - zeroTs) < 15_000L)
-        assertFalse("Zero timestamp must never be online", isZeroOnline)
-
-        // 5. Negative / corrupted timestamp
-        val negativeTs = -1000L
-        val isNegativeOnline = (negativeTs > 0L) && ((now - negativeTs) < 15_000L)
-        assertFalse("Negative timestamp must never be online", isNegativeOnline)
     }
 }

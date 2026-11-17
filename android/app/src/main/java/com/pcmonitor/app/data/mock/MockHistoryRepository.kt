@@ -2,25 +2,19 @@ package com.pcmonitor.app.data.mock
 
 import com.pcmonitor.app.data.model.HistoryEntry
 import com.pcmonitor.app.data.model.HistorySummary
+import com.pcmonitor.app.data.remote.ConvexHttp
 import com.pcmonitor.app.data.repository.HistoryRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class MockHistoryRepository(
     private val userPreferencesRepository: UserPreferencesRepository? = null
 ) : HistoryRepository {
-
-    companion object {
-        private const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
-    }
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -35,19 +29,10 @@ class MockHistoryRepository(
         if (deviceId.isNotBlank() && token.isNotBlank()) {
             withContext(Dispatchers.IO) {
                 try {
-                    val mediaType = "application/json; charset=utf-8".toMediaType()
-                    val reqJson = JSONObject().apply {
-                        put("path", "devices:getDeviceSummaries")
-                        put("args", JSONObject().apply {
-                            put("token", token)
-                            put("deviceId", deviceId)
-                            put("days", days)
-                        })
-                    }
-                    val req = Request.Builder()
-                        .url("$CONVEX_BASE_URL/api/query")
-                        .post(reqJson.toString().toRequestBody(mediaType))
-                        .build()
+                    val req = ConvexHttp.request(
+                        "query", "devices:getDeviceSummaries",
+                        JSONObject().put("token", token).put("deviceId", deviceId).put("days", days)
+                    )
                     val resp = httpClient.newCall(req).execute()
                     if (resp.isSuccessful) {
                         val body = resp.body?.string()

@@ -7,7 +7,7 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import com.pcmonitor.app.data.mock.MockAuthRepository
+import com.pcmonitor.app.data.remote.ConvexHttp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,10 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
@@ -80,11 +78,7 @@ object AppUpdater {
 
     private suspend fun fetchLatest(): AppRelease? = withContext(Dispatchers.IO) {
         try {
-            val body = JSONObject().put("path", "releases:latest").put("args", JSONObject()).toString()
-            val req = Request.Builder()
-                .url("${MockAuthRepository.CONVEX_BASE_URL}/api/query")
-                .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
-                .build()
+            val req = ConvexHttp.request("query", "releases:latest", JSONObject())
             val env = http.newCall(req).execute().use { JSONObject(it.body?.string().orEmpty()) }
             val v = env.optJSONObject("value")
             if (env.optString("status") != "success" || v == null || v.isNull("apkUrl")) return@withContext null

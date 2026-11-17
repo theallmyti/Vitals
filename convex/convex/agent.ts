@@ -5,7 +5,7 @@
 // Devices are enrolled exclusively through the pairing flow (pairing.ts).
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { deviceBySecretHash, removeDeviceData } from "./model";
+import { cleanText, deviceBySecretHash, removeDeviceData } from "./model";
 import { LATEST_AGENT_VERSION, isUnsupported } from "./versions";
 import { currentAgentVersion } from "./releases";
 import { RETENTION_MS } from "./summaries";
@@ -42,7 +42,7 @@ export const hello = mutation({
       throw new ConvexError("not paired");
     }
     const sanitizedVersion = args.agentVersion
-      ? args.agentVersion.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 32)
+      ? cleanText(args.agentVersion, 32)
       : undefined;
     let sanitizedCapabilities = args.capabilities;
     if (sanitizedCapabilities) {
@@ -52,7 +52,7 @@ export const hello = mutation({
       if (sanitizedCapabilities.cpuModel) {
         sanitizedCapabilities = {
           ...sanitizedCapabilities,
-          cpuModel: sanitizedCapabilities.cpuModel.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 128),
+          cpuModel: cleanText(sanitizedCapabilities.cpuModel, 128),
         };
       }
     }
