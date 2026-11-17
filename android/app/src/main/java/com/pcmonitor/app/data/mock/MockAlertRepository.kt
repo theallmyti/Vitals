@@ -4,6 +4,7 @@ import android.util.Log
 import com.pcmonitor.app.data.model.Alert
 import com.pcmonitor.app.data.model.AlertCategory
 import com.pcmonitor.app.data.model.AlertSeverity
+import com.pcmonitor.app.data.remote.ConvexHttp
 import com.pcmonitor.app.data.repository.AlertRepository
 import com.pcmonitor.app.data.repository.DeviceRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
@@ -18,10 +19,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -33,7 +31,6 @@ class MockAlertRepository(
 
     companion object {
         private const val TAG = "AlertRepository"
-        private const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
     }
 
     private var activeUserEmail: String = ""
@@ -48,25 +45,8 @@ class MockAlertRepository(
 
     private val repositoryScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    private val fallbackDns = object : okhttp3.Dns {
-        override fun lookup(hostname: String): List<java.net.InetAddress> {
-            return try {
-                okhttp3.Dns.SYSTEM.lookup(hostname)
-            } catch (e: Exception) {
-                if (hostname.contains("convex.cloud")) {
-                    listOf(
-                        java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 14.toByte(), 131.toByte())),
-                        java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 15.toByte(), 131.toByte()))
-                    )
-                } else {
-                    throw e
-                }
-            }
-        }
-    }
-
     private val httpClient = OkHttpClient.Builder()
-        .dns(fallbackDns)
+        .dns(ConvexHttp.fallbackDns)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
@@ -106,18 +86,8 @@ class MockAlertRepository(
     private suspend fun syncAlertsWithConvex() {
         val token = userPreferencesRepository?.getSessionToken()
         if (token.isNullOrBlank()) return
-        val mediaType = "application/json; charset=utf-8".toMediaType()
         try {
-            val queryJson = JSONObject().apply {
-                put("path", "devices:getMyAlerts")
-                put("args", JSONObject().apply {
-                    put("token", token)
-                })
-            }
-            val req = Request.Builder()
-                .url("$CONVEX_BASE_URL/api/query")
-                .post(queryJson.toString().toRequestBody(mediaType))
-                .build()
+            val req = ConvexHttp.request("query", "devices:getMyAlerts", JSONObject().put("token", token))
             val resp = withContext(Dispatchers.IO) { httpClient.newCall(req).execute() }
             if (resp.isSuccessful) {
                 val body = resp.body?.string()
@@ -258,17 +228,7 @@ class MockAlertRepository(
         val token = userPreferencesRepository?.getSessionToken() ?: return
         repositoryScope.launch {
             try {
-                val mediaType = "application/json; charset=utf-8".toMediaType()
-                val mutationJson = JSONObject().apply {
-                    put("path", "devices:clearAlerts")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                    })
-                }
-                val req = Request.Builder()
-                    .url("$CONVEX_BASE_URL/api/mutation")
-                    .post(mutationJson.toString().toRequestBody(mediaType))
-                    .build()
+                val req = ConvexHttp.request("mutation", "devices:clearAlerts", JSONObject().put("token", token))
                 withContext(Dispatchers.IO) { httpClient.newCall(req).execute().close() }
             } catch (e: Exception) {
                 Log.d(TAG, "Error clearing cloud alerts: ${e.message}")

@@ -11,10 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
+import com.pcmonitor.app.data.remote.ConvexHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -23,20 +22,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class UserPreferencesRepository(private val context: Context) {
 
     private val httpClient = OkHttpClient.Builder()
-        .dns(object : okhttp3.Dns {
-            override fun lookup(hostname: String): List<java.net.InetAddress> {
-                return try {
-                    okhttp3.Dns.SYSTEM.lookup(hostname)
-                } catch (e: Exception) {
-                    if (hostname.contains("convex.cloud")) {
-                        listOf(
-                            java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 14.toByte(), 131.toByte())),
-                            java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 15.toByte(), 131.toByte()))
-                        )
-                    } else throw e
-                }
-            }
-        })
+        .dns(ConvexHttp.fallbackDns)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
@@ -282,7 +268,6 @@ class UserPreferencesRepository(private val context: Context) {
         if (token.isNullOrBlank()) return false
         return withContext(Dispatchers.IO) {
             try {
-                val mediaType = "application/json; charset=utf-8".toMediaType()
                 val args = JSONObject().apply {
                     put("token", token)
                     put("cpuTempC", cpu.toDouble())
@@ -293,14 +278,7 @@ class UserPreferencesRepository(private val context: Context) {
                         put("deviceId", deviceId)
                     }
                 }
-                val json = JSONObject().apply {
-                    put("path", "devices:updateThresholds")
-                    put("args", args)
-                }
-                val req = Request.Builder()
-                    .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                    .post(json.toString().toRequestBody(mediaType))
-                    .build()
+                val req = ConvexHttp.request("mutation", "devices:updateThresholds", args)
                 val ok = isConvexSuccess(req)
                 android.util.Log.i("UserPreferencesRepo", "Threshold sync (device: $deviceId) ok=$ok")
                 ok
@@ -316,18 +294,10 @@ class UserPreferencesRepository(private val context: Context) {
         if (token.isNullOrBlank() || deviceId.isBlank()) return false
         return withContext(Dispatchers.IO) {
             try {
-                val mediaType = "application/json; charset=utf-8".toMediaType()
-                val json = JSONObject().apply {
-                    put("path", "devices:resetDeviceThresholds")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                        put("deviceId", deviceId)
-                    })
-                }
-                val req = Request.Builder()
-                    .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                    .post(json.toString().toRequestBody(mediaType))
-                    .build()
+                val req = ConvexHttp.request(
+                    "mutation", "devices:resetDeviceThresholds",
+                    JSONObject().put("token", token).put("deviceId", deviceId)
+                )
                 isConvexSuccess(req)
             } catch (e: Exception) {
                 android.util.Log.e("UserPreferencesRepo", "Failed to reset thresholds in Convex: ${e.message}")
@@ -341,19 +311,10 @@ class UserPreferencesRepository(private val context: Context) {
         if (token.isNullOrBlank() || fcmToken.isBlank()) return
         withContext(Dispatchers.IO) {
             try {
-                val mediaType = "application/json; charset=utf-8".toMediaType()
-                val json = JSONObject().apply {
-                    put("path", "devices:registerPushToken")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                        put("fcmToken", fcmToken.trim())
-                        put("phoneModel", phoneModel)
-                    })
-                }
-                val req = Request.Builder()
-                    .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                    .post(json.toString().toRequestBody(mediaType))
-                    .build()
+                val req = ConvexHttp.request(
+                    "mutation", "devices:registerPushToken",
+                    JSONObject().put("token", token).put("fcmToken", fcmToken.trim()).put("phoneModel", phoneModel)
+                )
                 httpClient.newCall(req).execute().close()
                 android.util.Log.i("UserPreferencesRepo", "Synced FCM push token to Convex for user")
             } catch (e: Exception) {
@@ -372,17 +333,10 @@ class UserPreferencesRepository(private val context: Context) {
         if (token.isNullOrBlank()) return null
         return withContext(Dispatchers.IO) {
             try {
-                val json = JSONObject().apply {
-                    put("path", "devices:getThresholds")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                        if (!deviceId.isNullOrBlank()) put("deviceId", deviceId)
-                    })
+                val args = JSONObject().put("token", token).apply {
+                    if (!deviceId.isNullOrBlank()) put("deviceId", deviceId)
                 }
-                val req = Request.Builder()
-                    .url("https://tidy-newt-65.convex.cloud/api/query")
-                    .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .build()
+                val req = ConvexHttp.request("query", "devices:getThresholds", args)
                 val env = httpClient.newCall(req).execute().use { JSONObject(it.body?.string().orEmpty()) }
                 val v = env.optJSONObject("value")
                 if (env.optString("status") != "success" || v == null) return@withContext null
@@ -400,17 +354,10 @@ class UserPreferencesRepository(private val context: Context) {
         if (token.isNullOrBlank()) return null
         return withContext(Dispatchers.IO) {
             try {
-                val json = JSONObject().apply {
-                    put("path", "devices:getDiskThresholds")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                        put("deviceId", deviceId)
-                    })
-                }
-                val req = Request.Builder()
-                    .url("https://tidy-newt-65.convex.cloud/api/query")
-                    .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .build()
+                val req = ConvexHttp.request(
+                    "query", "devices:getDiskThresholds",
+                    JSONObject().put("token", token).put("deviceId", deviceId)
+                )
                 val env = httpClient.newCall(req).execute().use { JSONObject(it.body?.string().orEmpty()) }
                 val arr = env.optJSONArray("value")
                 if (env.optString("status") != "success" || arr == null) return@withContext null
@@ -432,19 +379,14 @@ class UserPreferencesRepository(private val context: Context) {
         if (token.isNullOrBlank()) return false
         return withContext(Dispatchers.IO) {
             try {
-                val json = JSONObject().apply {
-                    put("path", "devices:setDiskThreshold")
-                    put("args", JSONObject().apply {
-                        put("token", token)
-                        put("deviceId", deviceId)
-                        put("drive", drive)
-                        put("minFreePct", minFreePct?.toDouble() ?: JSONObject.NULL)
-                    })
-                }
-                val req = Request.Builder()
-                    .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                    .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .build()
+                val req = ConvexHttp.request(
+                    "mutation", "devices:setDiskThreshold",
+                    JSONObject()
+                        .put("token", token)
+                        .put("deviceId", deviceId)
+                        .put("drive", drive)
+                        .put("minFreePct", minFreePct?.toDouble() ?: JSONObject.NULL)
+                )
                 isConvexSuccess(req)
             } catch (e: Exception) {
                 false

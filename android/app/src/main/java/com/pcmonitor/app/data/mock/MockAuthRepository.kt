@@ -16,17 +16,17 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import com.pcmonitor.app.data.Avatar
 import com.pcmonitor.app.data.AvatarStore
+import com.pcmonitor.app.data.remote.ConvexHttp
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 class MockAuthRepository(
     private val userPreferencesRepository: UserPreferencesRepository? = null,
-    private val baseUrl: String = CONVEX_BASE_URL
+    private val baseUrl: String = ConvexHttp.CLOUD_URL
 ) : AuthRepository {
 
     companion object {
-        const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
         private const val OFFLINE = "Can't reach Vitals. Check your internet connection and try again."
     }
 
@@ -98,11 +98,7 @@ class MockAuthRepository(
         if (baseUrl.isBlank()) return Result.failure(Exception(OFFLINE))
         return withContext(Dispatchers.IO) {
             try {
-                val body = JSONObject().apply {
-                    put("path", path)
-                    put("args", JSONObject(args))
-                }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val req = Request.Builder().url("$baseUrl/api/action").post(body).build()
+                val req = ConvexHttp.request("action", path, JSONObject(args), baseUrl)
                 val text = httpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
                 val env = JSONObject(text)
                 if (env.optString("status") == "success") Result.success(env.optJSONObject("value"))
@@ -146,17 +142,7 @@ class MockAuthRepository(
         if (!token.isNullOrBlank() && baseUrl.isNotBlank()) {
             withContext(Dispatchers.IO) {
                 try {
-                    val mediaType = "application/json; charset=utf-8".toMediaType()
-                    val reqJson = JSONObject().apply {
-                        put("path", "auth:signOut")
-                        put("args", JSONObject().apply {
-                            put("token", token)
-                        })
-                    }
-                    val req = Request.Builder()
-                        .url("$baseUrl/api/mutation")
-                        .post(reqJson.toString().toRequestBody(mediaType))
-                        .build()
+                    val req = ConvexHttp.request("mutation", "auth:signOut", JSONObject().put("token", token), baseUrl)
                     httpClient.newCall(req).execute().close()
                 } catch (_: Exception) {}
             }
@@ -204,11 +190,7 @@ class MockAuthRepository(
         if (baseUrl.isBlank()) return Result.failure(Exception(OFFLINE))
         return withContext(Dispatchers.IO) {
             try {
-                val body = JSONObject().apply {
-                    put("path", path)
-                    put("args", JSONObject(args))
-                }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val req = Request.Builder().url("$baseUrl/api/$kind").post(body).build()
+                val req = ConvexHttp.request(kind, path, JSONObject(args), baseUrl)
                 val text = httpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
                 val env = JSONObject(text)
                 if (env.optString("status") == "success") Result.success(env.opt("value"))

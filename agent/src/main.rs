@@ -6,8 +6,10 @@
 #[macro_use]
 mod logging;
 mod aggregator;
+mod backend;
 mod backlog;
 mod battery;
+mod clock;
 mod collectors;
 mod config;
 mod control;
@@ -19,6 +21,7 @@ mod liveclock;
 mod pair;
 #[cfg(windows)]
 mod pair_gui;
+mod payload;
 #[cfg(windows)]
 mod service;
 mod supervisor;
@@ -32,25 +35,26 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
-use aggregator::{Aggregator, Sample, Summary};
+use aggregator::{Aggregator, Sample};
 use backlog::Backlog;
-use collectors::{Drive, Proc};
-use convex::{ConvexClient, FunctionResult, Value};
-use futures::StreamExt;
+use clock::{now_ms, now_secs};
+use collectors::Proc;
+use convex::Value;
+use payload::{
+    battery_value, capabilities_value, docker_value, drives_live, gpu_value, num, numbers,
+    procs_value, ram_value, summary_value, text, usage_value,
+};
 use supervisor::Supervisor;
 use sysinfo::{Components, CpuRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
 use tokio::sync::Notify;
-use usage::{UsageTracker, now_wall_secs};
+use usage::UsageTracker;
 
 /// FR-30: one summary per minute, always.
 const SUMMARY_EVERY: Duration = Duration::from_secs(60);
-/// A push that takes longer than this is dropped so sampling keeps going.
-const PUSH_TIMEOUT: Duration = Duration::from_secs(5);
 /// Offline buffering: keep up to a day of unsent summaries, send at most 60 per call.
 const BACKLOG_MAX: usize = 24 * 60;
-const BATCH_MAX: usize = 60;
 /// Live view refresh intervals for the slower readings, in seconds (ticks).
 const PROCESS_EVERY: u64 = 5;
 const DRIVES_EVERY: u64 = 10;
@@ -106,360 +110,6 @@ fn print_sensors() {
             None => say!("{:<40} n/a", c.label()),
         }
     }
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
-fn num(v: f64) -> Value {
-    Value::Float64(v)
-}
-
-fn text(s: &str) -> Value {
-    Value::String(s.to_string())
-}
-
-fn obj<const N: usize>(fields: [(&str, Value); N]) -> Value {
-    Value::Object(
-        fields
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
-    )
-}
-
-fn numbers(values: &[f64]) -> Value {
-    Value::Array(values.iter().map(|v| num(*v)).collect())
-}
-
-/// Convex `gpu` object (docs/Database.md `latest.gpu`). Optional fields are left out when absent.
-fn gpu_value(g: &gpu::GpuStats) -> Value {
-    let mut o = BTreeMap::new();
-    o.insert("temp".to_string(), num(f64::from(g.temp_c)));
-    o.insert("util".to_string(), num(f64::from(g.util_pct)));
-    o.insert("vramUsed".to_string(), num(g.vram_used_mb as f64));
-    o.insert("vramTotal".to_string(), num(g.vram_total_mb as f64));
-    o.insert("powerW".to_string(), num(g.power_w));
-    o.insert("clock".to_string(), num(f64::from(g.clock_mhz)));
-    if let Some(fan) = g.fan_pct {
-        o.insert("fanPct".to_string(), num(f64::from(fan)));
-    }
-    Value::Object(o)
-}
-
-fn drives_live(drives: &[Drive]) -> Value {
-    Value::Array(
-        drives
-            .iter()
-            .map(|d| {
-                obj([
-                    ("name", text(&d.name)),
-                    ("totalGB", num(d.total_gb)),
-                    ("freeGB", num(d.free_gb)),
-                ])
-            })
-            .collect(),
-    )
-}
-
-fn drives_summary(drives: &[Drive]) -> Value {
-    Value::Array(
-        drives
-            .iter()
-            .map(|d| {
-                let pct = if d.total_gb > 0.0 {
-                    d.free_gb / d.total_gb * 100.0
-                } else {
-                    0.0
-                };
-                obj([
-                    ("name", text(&d.name)),
-                    ("freeGB", num(d.free_gb)),
-                    ("freePct", num(pct)),
-                ])
-            })
-            .collect(),
-    )
-}
-
-fn procs_value(procs: &[Proc]) -> Value {
-    Value::Array(
-        procs
-            .iter()
-            .map(|p| obj([("name", text(&p.name)), ("mb", num(p.mb))]))
-            .collect(),
-    )
-}
-
-/// FR-15: what this device can report (docs/Database.md §2).
-fn capabilities_value(
-    has_gpu: bool,
-    has_battery: bool,
-    full_mode: bool,
-    components: &Components,
-    drives: &[Drive],
-    cpu_model: Option<&str>,
-) -> Value {
-    let mut o = BTreeMap::new();
-    // Fixed facts for the device page (read once; FR-15).
-    if let Some(m) = cpu_model {
-        o.insert("cpuModel".to_string(), text(m));
-    }
-    if let Some(mts) = hardware::ram_speed_mts() {
-        o.insert("ramSpeedMTs".to_string(), num(f64::from(mts)));
-    }
-    o.insert("hasBattery".to_string(), Value::Boolean(has_battery));
-    o.insert("hasNvidiaGpu".to_string(), Value::Boolean(has_gpu));
-    o.insert(
-        "perCoreTemps".to_string(),
-        Value::Boolean(collectors::has_per_core_temps(components)),
-    );
-    if cfg!(windows) {
-        let mode = if full_mode { "full" } else { "noDriver" };
-        o.insert("windowsMode".to_string(), text(mode));
-    }
-    o.insert(
-        "isPi".to_string(),
-        Value::Boolean(collectors::is_raspberry_pi()),
-    );
-    o.insert(
-        "drives".to_string(),
-        Value::Array(
-            drives
-                .iter()
-                .map(|d| obj([("name", text(&d.name)), ("totalGB", num(d.total_gb))]))
-                .collect(),
-        ),
-    );
-    Value::Object(o)
-}
-
-/// One minute's summary for `agent:pushSummaries`, stamped with this computer's clock (the
-/// server corrects it). Optional readings are left out when absent.
-fn summary_value(
-    minute_ts: u64,
-    s: &Summary,
-    drives: &[Drive],
-    collector_status: &BTreeMap<String, String>,
-) -> Value {
-    let mut a = BTreeMap::new();
-    a.insert("minuteTs".to_string(), num(minute_ts as f64));
-    a.insert("cpuUtilAvg".to_string(), num(s.cpu_util_avg));
-    a.insert("cpuUtilMax".to_string(), num(s.cpu_util_max));
-    a.insert("ramPctAvg".to_string(), num(s.ram_pct_avg));
-    a.insert("ramPctMax".to_string(), num(s.ram_pct_max));
-    let optional = [
-        ("cpuTempAvg", s.cpu_temp_avg),
-        ("cpuTempMax", s.cpu_temp_max),
-        ("gpuTempMax", s.gpu_temp_max),
-        ("gpuUtilAvg", s.gpu_util_avg),
-        ("batteryPct", s.battery_pct),
-    ];
-    for (key, value) in optional {
-        if let Some(v) = value {
-            a.insert(key.to_string(), num(v));
-        }
-    }
-    if !drives.is_empty() {
-        a.insert("disks".to_string(), drives_summary(drives));
-    }
-    if !collector_status.is_empty() {
-        let mut cs = BTreeMap::new();
-        for (k, v) in collector_status {
-            cs.insert(k.clone(), text(v));
-        }
-        a.insert("collectorStatus".to_string(), Value::Object(cs));
-    }
-    Value::Object(a)
-}
-
-/// A count in a Convex answer (numbers arrive as Float64, or Int64 for bigints).
-fn count(v: Option<&Value>) -> u64 {
-    match v {
-        Some(Value::Float64(f)) => *f as u64,
-        Some(Value::Int64(i)) => (*i).max(0) as u64,
-        _ => 0,
-    }
-}
-
-/// Send the oldest waiting summaries. On failure they stay in the backlog for the next minute.
-async fn send_backlog(client: &mut ConvexClient, secret_hash: &str, backlog: &mut Backlog<Value>) {
-    let batch = backlog.batch(BATCH_MAX);
-    let n = batch.len();
-    let mut args = BTreeMap::new();
-    args.insert("secretHash".to_string(), text(secret_hash));
-    args.insert("sentAt".to_string(), num(now_ms() as f64));
-    args.insert("summaries".to_string(), Value::Array(batch));
-    let Some(Value::Object(answer)) = call(client, "agent:pushSummaries", args).await else {
-        if backlog.len() > 1 {
-            say!(
-                "{} summaries kept until the connection is back",
-                backlog.len()
-            );
-        }
-        return;
-    };
-    // Sent within 50 s of the previous call (e.g. right after a restart): retry next minute.
-    if answer.get("tooSoon") == Some(&Value::Boolean(true)) {
-        return;
-    }
-    backlog.confirm(n);
-    let skipped = count(answer.get("skipped"));
-    if skipped > 0 {
-        warn!("{skipped} summaries were refused (impossible values or too old)");
-    }
-    if n > 1 {
-        say!(
-            "sent {n} buffered summaries ({} stored, {} still waiting)",
-            count(answer.get("stored")),
-            backlog.len()
-        );
-    }
-}
-
-/// Run a mutation with a timeout; log failures. Returns the result on success.
-async fn call(
-    client: &mut ConvexClient,
-    name: &str,
-    args: BTreeMap<String, Value>,
-) -> Option<Value> {
-    match tokio::time::timeout(PUSH_TIMEOUT, client.mutation(name, args)).await {
-        Ok(Ok(FunctionResult::Value(v))) => Some(v),
-        Ok(Ok(FunctionResult::ErrorMessage(msg))) => {
-            warn!("{name}: {msg}");
-            None
-        }
-        Ok(Ok(FunctionResult::ConvexError(err))) => {
-            warn!("{name}: {err:?}");
-            None
-        }
-        Ok(Err(e)) => {
-            warn!("{name} failed: {e}");
-            None
-        }
-        Err(_) => {
-            warn!(
-                "{name}: no answer within {}s (offline?)",
-                PUSH_TIMEOUT.as_secs()
-            );
-            None
-        }
-    }
-}
-
-/// Like `call`, when only success matters.
-async fn push(client: &mut ConvexClient, name: &str, args: BTreeMap<String, Value>) -> bool {
-    call(client, name, args).await.is_some()
-}
-
-/// "x.y.z" as numbers; missing or non-numeric parts count as 0.
-fn version_parts(v: &str) -> [u64; 3] {
-    let mut out = [0; 3];
-    for (slot, part) in out.iter_mut().zip(v.split('.')) {
-        *slot = part.trim().parse().unwrap_or(0);
-    }
-    out
-}
-
-/// The newer release named in `agent:hello`'s answer, if it is newer than this agent.
-fn newer_version(hello: &Value, own: &str) -> Option<String> {
-    let Value::Object(o) = hello else { return None };
-    let Some(Value::String(latest)) = o.get("latestVersion") else {
-        return None;
-    };
-    (version_parts(latest) > version_parts(own)).then(|| latest.clone())
-}
-
-/// First connection, retried with backoff 1 s → 60 s (docs/CHANGELOG.md decisions).
-async fn connect(url: &str) -> ConvexClient {
-    let mut delay = Duration::from_secs(1);
-    loop {
-        match ConvexClient::new(url).await {
-            Ok(c) => return c,
-            Err(e) => {
-                warn!(
-                    "cannot connect to Convex: {e}; retrying in {}s",
-                    delay.as_secs()
-                );
-                tokio::time::sleep(delay).await;
-                delay = (delay * 2).min(Duration::from_secs(60));
-            }
-        }
-    }
-}
-
-/// Keep `viewer_until` in sync with the device's viewer flag (subscription to agent:watchViewer).
-fn watch_viewer(mut client: ConvexClient, secret_hash: String, viewer_until: Arc<AtomicU64>) {
-    tokio::spawn(async move {
-        loop {
-            let mut args = BTreeMap::new();
-            args.insert("secretHash".to_string(), text(&secret_hash));
-            match client.subscribe("agent:watchViewer", args).await {
-                Ok(mut sub) => {
-                    while let Some(result) = sub.next().await {
-                        match result {
-                            FunctionResult::Value(Value::Float64(t)) => {
-                                viewer_until.store(t as u64, Ordering::Relaxed)
-                            }
-                            FunctionResult::Value(Value::Int64(t)) => {
-                                viewer_until.store(t.max(0) as u64, Ordering::Relaxed)
-                            }
-                            other => warn!("agent:watchViewer: {other:?}"),
-                        }
-                    }
-                }
-                Err(e) => warn!("agent:watchViewer failed: {e}"),
-            }
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-    });
-}
-
-/// Push updates: subscribe to releases:latest and install each newer agent version the backend
-/// announces (the release workflow publishes it once the GitHub release is live).
-/// Older backends without releases:latest just make the subscription fail; the 6-hour poll stays.
-fn watch_release(
-    mut client: ConvexClient,
-    secret_hash: &str,
-    data_dir: PathBuf,
-    current_exe: PathBuf,
-) {
-    let own = env!("CARGO_PKG_VERSION");
-    // Per-device spread for announced_update_delay: the device key hash, stable across restarts.
-    let spread = u64::from_str_radix(secret_hash.get(..16).unwrap_or("0"), 16).unwrap_or(0);
-    tokio::spawn(async move {
-        let mut handled: Option<String> = None;
-        loop {
-            match client.subscribe("releases:latest", BTreeMap::new()).await {
-                Ok(mut sub) => {
-                    while let Some(result) = sub.next().await {
-                        let FunctionResult::Value(Value::Object(o)) = result else {
-                            warn!("releases:latest: {result:?}");
-                            continue;
-                        };
-                        let Some(Value::String(v)) = o.get("agentVersion") else {
-                            continue;
-                        };
-                        if handled.as_deref() == Some(v.as_str()) || !update::is_newer(v, own) {
-                            continue;
-                        }
-                        handled = Some(v.clone());
-                        say!("version {v} published (this is {own}); installing it");
-                        let (v, d, e) = (v.clone(), data_dir.clone(), current_exe.clone());
-                        tokio::spawn(async move {
-                            update::install_announced(&v, &d, own, &e, spread).await;
-                        });
-                    }
-                }
-                Err(e) => warn!("releases:latest failed: {e}"),
-            }
-            tokio::time::sleep(Duration::from_secs(30)).await;
-        }
-    });
 }
 
 fn print_help() {
@@ -575,7 +225,7 @@ fn print_status() {
 
     match control::read_status(&dir) {
         Some(s) => {
-            let now = usage::now_wall_secs();
+            let now = now_secs();
             let age = now.saturating_sub(s.last_tick);
             let state_display = match s.state.as_str() {
                 "active" if age > 15 => format!("Stalled (last tick {age}s ago)"),
@@ -606,6 +256,14 @@ fn print_status() {
             println!("Data Dir:     {}", dir.display());
         }
     }
+}
+
+fn block_on<F: std::future::Future>(f: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to start the async runtime")
+        .block_on(f)
 }
 
 fn main() {
@@ -681,12 +339,7 @@ fn main() {
                     if update::is_newer(latest_ver, own_version) {
                         println!("Found newer release: v{latest_ver}");
                         println!("Downloading release assets and verifying SHA-256 checksums...");
-                        let runtime = tokio::runtime::Builder::new_current_thread()
-                            .enable_all()
-                            .build()
-                            .expect("failed to start async runtime");
-
-                        match runtime.block_on(update::check_and_apply_update(
+                        match block_on(update::check_and_apply_update(
                             &data_dir,
                             own_version,
                             &current_exe,
@@ -719,11 +372,7 @@ fn main() {
         Some("unpair") => {
             let explicit = std::env::args().nth(2);
             let path = resolve_config_path(explicit.as_deref());
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("failed to start the async runtime")
-                .block_on(pair::unpair(&path));
+            block_on(pair::unpair(&path));
             return;
         }
         // Show a QR code and wait for the owner to confirm.
@@ -774,11 +423,7 @@ fn main() {
                 None => pair::Ui::Terminal,
             };
 
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("failed to start the async runtime")
-                .block_on(pair::run(&path, ui, skip_if_paired));
+            block_on(pair::run(&path, ui, skip_if_paired));
             return;
         }
         // Started by the Windows Service Control Manager (installed by the setup program).
@@ -903,18 +548,10 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     });
     control::write_status(
         &data_dir,
-        &control::AgentStatus {
-            state: "connecting".to_string(),
-            cpu_util: 0.0,
-            ram_pct: 0.0,
-            temp_c: None,
-            paused_until: None,
-            last_tick: usage::now_wall_secs(),
-            convex_url: Some(config.convex_url.clone()),
-        },
+        &control::AgentStatus::idle("connecting", Some(config.convex_url.clone())),
     );
 
-    let mut client = connect(&config.convex_url).await;
+    let mut client = backend::connect(&config.convex_url).await;
 
     // Say hello: the device must be paired (docs/Flow.md §3). Until then, retry every minute,
     // so a service started before pairing picks it up without a restart.
@@ -936,20 +573,12 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     );
     hello_args.insert("agentVersion".to_string(), text(env!("CARGO_PKG_VERSION")));
     let hello = loop {
-        if let Some(answer) = call(&mut client, "agent:hello", hello_args.clone()).await {
+        if let Some(answer) = backend::call(&mut client, "agent:hello", hello_args.clone()).await {
             break answer;
         }
         control::write_status(
             &data_dir,
-            &control::AgentStatus {
-                state: "unpaired".to_string(),
-                cpu_util: 0.0,
-                ram_pct: 0.0,
-                temp_c: None,
-                paused_until: None,
-                last_tick: usage::now_wall_secs(),
-                convex_url: Some(config.convex_url.clone()),
-            },
+            &control::AgentStatus::idle("unpaired", Some(config.convex_url.clone())),
         );
         say!("not connected yet (see above; if not paired, run `vitals pair`); retrying in 60 s");
         tokio::select! {
@@ -958,32 +587,23 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 say!("stopping agent during connection retry");
                 control::write_status(
                     &data_dir,
-                    &control::AgentStatus {
-                        state: "stopped".to_string(),
-                        cpu_util: 0.0,
-                        ram_pct: 0.0,
-                        temp_c: None,
-                        paused_until: None,
-                        last_tick: usage::now_wall_secs(),
-                        convex_url: Some(config.convex_url.clone()),
-                    },
+                    &control::AgentStatus::idle("stopped", Some(config.convex_url.clone())),
                 );
                 return;
             }
         }
     };
     say!("connected as a paired device");
-    let own_version = env!("CARGO_PKG_VERSION");
-    if let Some(latest) = newer_version(&hello, own_version) {
+    if let Some(latest) = backend::newer_version(&hello, own_version) {
         say!(
             "update available: version {latest} (this is {own_version}); it installs automatically unless auto_update = false"
         );
     }
 
     let viewer_until = Arc::new(AtomicU64::new(0));
-    watch_viewer(client.clone(), secret_hash.clone(), viewer_until.clone());
+    backend::watch_viewer(client.clone(), secret_hash.clone(), viewer_until.clone());
     if config.auto_update {
-        watch_release(
+        backend::watch_release(
             client.clone(),
             &secret_hash,
             data_dir.clone(),
@@ -997,7 +617,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
 
     let boot_time = collectors::boot_time();
     let uptime_init = collectors::uptime_secs().unwrap_or(0);
-    let mut usage_tracker = UsageTracker::new(boot_time, uptime_init, now_wall_secs());
+    let mut usage_tracker = UsageTracker::new(boot_time, uptime_init, now_secs());
 
     let mut supervisor = Supervisor::new();
     supervisor.register("cpu");
@@ -1027,10 +647,6 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     let mut next_summary = Instant::now() + Duration::from_secs(10);
     let mut was_live = false;
     let mut was_paused = false;
-    let data_dir = path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .to_path_buf();
     let mut tick: u64 = 0;
     let mut ticker = tokio::time::interval(Duration::from_secs(config.live_interval_secs));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -1042,15 +658,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 say!("stopping agent, performing clean flush...");
                 control::write_status(
                     &data_dir,
-                    &control::AgentStatus {
-                        state: "stopped".to_string(),
-                        cpu_util: 0.0,
-                        ram_pct: 0.0,
-                        temp_c: None,
-                        paused_until: None,
-                        last_tick: now_wall_secs(),
-                        convex_url: Some(config.convex_url.clone()),
-                    },
+                    &control::AgentStatus::idle("stopped", Some(config.convex_url.clone())),
                 );
                 if let Some(s) = aggregator.take() {
                     let col_status = supervisor.status_map();
@@ -1064,7 +672,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 if !backlog.is_empty() {
                     let _ = tokio::time::timeout(
                         Duration::from_secs(3),
-                        send_backlog(&mut client, &secret_hash, &mut backlog),
+                        backend::send_backlog(&mut client, &secret_hash, &mut backlog),
                     )
                     .await;
                 }
@@ -1073,7 +681,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             }
         }
         tick += 1;
-        let now_wall = now_wall_secs();
+        let now_wall = now_secs();
         let uptime_now = collectors::uptime_secs().unwrap_or(0);
 
         let pause_ctrl = control::read_control(&data_dir);
@@ -1086,13 +694,9 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 control::write_status(
                     &data_dir,
                     &control::AgentStatus {
-                        state: "paused".to_string(),
-                        cpu_util: 0.0,
-                        ram_pct: 0.0,
-                        temp_c: None,
                         paused_until: pause_ctrl.until,
                         last_tick: now_wall,
-                        convex_url: Some(config.convex_url.clone()),
+                        ..control::AgentStatus::idle("paused", Some(config.convex_url.clone()))
                     },
                 );
             }
@@ -1140,13 +744,11 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             control::write_status(
                 &data_dir,
                 &control::AgentStatus {
-                    state: "active".to_string(),
                     cpu_util,
                     ram_pct,
                     temp_c: cpu_t,
-                    paused_until: None,
                     last_tick: now_wall,
-                    convex_url: Some(config.convex_url.clone()),
+                    ..control::AgentStatus::idle("active", Some(config.convex_url.clone()))
                 },
             );
         }
@@ -1267,16 +869,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             if let Some(t) = &core_temps {
                 args.insert("coreTemps".to_string(), numbers(t));
             }
-            args.insert(
-                "ram".to_string(),
-                obj([
-                    ("used", num(ram.used)),
-                    ("free", num(ram.free)),
-                    ("total", num(ram.total)),
-                    ("swapUsed", num(ram.swap_used)),
-                    ("swapTotal", num(ram.swap_total)),
-                ]),
-            );
+            args.insert("ram".to_string(), ram_value(&ram));
             if config.share_activity {
                 args.insert("topProcs".to_string(), procs_value(&top));
             }
@@ -1286,55 +879,24 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             if let Some(up) = collectors::uptime_secs() {
                 args.insert("uptimeSec".to_string(), num(up as f64));
             }
-            let usage_stats = usage_tracker.stats(uptime_now);
-            let mut usage_obj = BTreeMap::new();
-            usage_obj.insert(
-                "activeTimeSec".to_string(),
-                num(usage_stats.active_time_today_sec as f64),
-            );
-            if let Some(bt) = usage_stats.boot_time {
-                usage_obj.insert("bootTime".to_string(), num(bt as f64));
-            }
-            if !usage_stats.events.is_empty() {
-                let evts = usage_stats
-                    .events
-                    .iter()
-                    .map(|e| obj([("event", text(&e.event)), ("ts", num(e.ts as f64))]))
-                    .collect();
-                usage_obj.insert("events".to_string(), Value::Array(evts));
-            }
             if config.share_activity {
-                args.insert("usage".to_string(), Value::Object(usage_obj));
+                let usage_stats = usage_tracker.stats(uptime_now);
+                args.insert("usage".to_string(), usage_value(&usage_stats));
             }
             if let Some(t) = cpu_t {
                 args.insert("cpuTemp".to_string(), num(t));
             }
             if let Some(d) = docker {
-                args.insert(
-                    "docker".to_string(),
-                    obj([
-                        ("running", num(f64::from(d.running))),
-                        ("stopped", num(f64::from(d.stopped))),
-                        ("errored", num(f64::from(d.error))),
-                    ]),
-                );
+                args.insert("docker".to_string(), docker_value(&d));
             }
             let effective_gpu = gpu.as_ref().or(gpu_now.as_ref());
             if let Some(g) = effective_gpu {
                 args.insert("gpu".to_string(), gpu_value(g));
             }
             if let Some(b) = &battery_now {
-                let mut o = BTreeMap::new();
-                o.insert("pct".to_string(), num(b.pct));
-                o.insert("charging".to_string(), Value::Boolean(b.charging));
-                o.insert("healthPct".to_string(), num(b.health_pct));
-                o.insert("rateW".to_string(), num(b.rate_w));
-                if let Some(c) = b.cycles {
-                    o.insert("cycles".to_string(), num(f64::from(c)));
-                }
-                args.insert("battery".to_string(), Value::Object(o));
+                args.insert("battery".to_string(), battery_value(b));
             }
-            push(&mut client, "agent:pushLatest", args).await;
+            backend::call(&mut client, "agent:pushLatest", args).await;
         } else if !top.is_empty() {
             // Free the process list when nobody is watching.
             top.clear();
@@ -1361,34 +923,8 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 }
             }
             if !backlog.is_empty() {
-                send_backlog(&mut client, &secret_hash, &mut backlog).await;
+                backend::send_backlog(&mut client, &secret_hash, &mut backlog).await;
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn hello_answer(latest: &str) -> Value {
-        let mut o = BTreeMap::new();
-        o.insert("latestVersion".to_string(), text(latest));
-        Value::Object(o)
-    }
-
-    #[test]
-    fn newer_version_compares_numbers_not_text() {
-        assert_eq!(
-            newer_version(&hello_answer("0.10.0"), "0.9.0").as_deref(),
-            Some("0.10.0")
-        );
-        assert_eq!(newer_version(&hello_answer("0.1.0"), "0.1.0"), None);
-        assert_eq!(newer_version(&hello_answer("0.1.0"), "0.2.0"), None);
-        // Older backends do not send latestVersion.
-        assert_eq!(
-            newer_version(&Value::Object(BTreeMap::new()), "0.1.0"),
-            None
-        );
     }
 }

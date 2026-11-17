@@ -3,7 +3,7 @@
 // valid for 10 minutes. The code is confirmed from the site (test phase) or the app.
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { normalizeCode, pairingByCode, pairingState } from "./model";
+import { cleanText, normalizeCode, pairingByCode, pairingState } from "./model";
 import { LIMITS, isLimited, recordEvent } from "./rateLimit";
 
 // No 0/O, 1/I: easy to read off a screen. 32 symbols, so a random byte maps without bias.
@@ -43,8 +43,8 @@ export const start = mutation({
     while (await pairingByCode(ctx, code)) {
       code = newCode();
     }
-    const sanitizedName = args.name.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 64) || "unknown";
-    const sanitizedOs = args.os.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 16) || "unknown";
+    const sanitizedName = cleanText(args.name, 64) || "unknown";
+    const sanitizedOs = cleanText(args.os, 16) || "unknown";
     const expiresAt = Date.now() + PAIRING_EXPIRES_MS;
     await ctx.db.insert("pairingRequests", {
       code,

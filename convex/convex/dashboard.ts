@@ -7,7 +7,10 @@ import { isOutdated } from "./versions";
 import { currentAgentVersion } from "./releases";
 import {
   viewableDevice,
-  sharedDevicesOf,
+  visibleDevicesOf,
+  cleanText,
+  isDeviceOnline,
+  deviceOs,
   shareDevice,
   leaveDevice,
   deviceBySecretHash,
@@ -19,8 +22,6 @@ import {
   requireUserAndTouch,
 } from "./model";
 
-// Offline when no summary for 3 minutes (FR-44). Summaries arrive every 60 s.
-const OFFLINE_AFTER_MS = 3 * 60 * 1000;
 // FR-33: the viewer sets now + 30 s and repeats every 15 s while a screen is open.
 const VIEWER_WINDOW_MS = 30 * 1000;
 
@@ -29,11 +30,7 @@ export const overview = query({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
     const now = Date.now();
-    const owned = await ctx.db
-      .query("devices")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
-    const devices = [...owned, ...(await sharedDevicesOf(ctx, user._id))];
+    const devices = await visibleDevicesOf(ctx, user._id);
     const latestList = await Promise.all(
       devices.map((d) =>
         ctx.db
@@ -44,24 +41,13 @@ export const overview = query({
     );
     const latestAgent = await currentAgentVersion(ctx);
     const out = devices.map((d, i) => {
-      let os = d.os;
-      if (!os) {
-        if (d.capabilities?.windowsMode) {
-          os = "windows";
-        } else if (d.capabilities?.isPi) {
-          os = "pi";
-        } else {
-          os = "linux";
-        }
-      }
       const latest = latestList[i] ?? null;
-      const isOnline = (now - d.lastSeenAt < OFFLINE_AFTER_MS) || (latest !== null && (now - latest.ts < 45_000));
       return {
         id: d._id,
         name: d.name,
-        os,
+        os: deviceOs(d),
         lastSeenAt: d.lastSeenAt,
-        online: Boolean(isOnline),
+        online: isDeviceOnline(d, latest, now),
         agentVersion: d.agentVersion ?? null,
         capabilities: d.capabilities ?? null,
         updateAvailable: isOutdated(d.agentVersion, latestAgent),
@@ -117,11 +103,7 @@ export const setViewerAll = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
     const until = Date.now() + VIEWER_WINDOW_MS;
-    const owned = await ctx.db
-      .query("devices")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
-    for (const d of [...owned, ...(await sharedDevicesOf(ctx, user._id))]) {
+    for (const d of await visibleDevicesOf(ctx, user._id)) {
       await ctx.db.patch(d._id, { viewerUntil: until });
     }
   },
@@ -133,7 +115,7 @@ export const renameDevice = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
     await ownedDevice(ctx, user, args.deviceId);
-    const name = args.name.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
+    const name = cleanText(args.name);
     if (name.length < 1 || name.length > 64) {
       throw new ConvexError("Use 1 to 64 characters for the name.");
     }

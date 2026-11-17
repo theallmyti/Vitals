@@ -5,7 +5,7 @@ import { action, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { dummyHash, hashPassword, newToken, tokenHash, verifyPassword } from "./passwords";
-import { requireUser, requireUserAndTouch, sessionUser } from "./model";
+import { cleanText, requireUser, requireUserAndTouch, sessionUser } from "./model";
 import { MAX_ATTEMPTS } from "./users";
 import { verifyTurnstile } from "./turnstile";
 import { EMAIL_NOT_CONFIGURED, emailConfigured, sendEmail } from "./email";
@@ -21,7 +21,7 @@ function normalizeEmail(email: string) {
 
 // Display name: no control characters, 1–40 characters, or nothing.
 function cleanName(name: string | undefined): string | undefined {
-  const n = (name ?? "").replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 40);
+  const n = cleanText(name ?? "", 40);
   return n.length > 0 ? n : undefined;
 }
 

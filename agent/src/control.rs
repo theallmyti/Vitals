@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct PauseState {
@@ -25,11 +25,16 @@ pub struct AgentStatus {
     pub convex_url: Option<String>,
 }
 
-pub fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+impl AgentStatus {
+    /// A status without readings (connecting, unpaired, stopped, paused), stamped now.
+    pub fn idle(state: &str, convex_url: Option<String>) -> Self {
+        AgentStatus {
+            state: state.to_string(),
+            last_tick: crate::clock::now_secs(),
+            convex_url,
+            ..Default::default()
+        }
+    }
 }
 
 pub const MAX_PAUSE_SECS: u64 = 24 * 60 * 60; // Max 24 hours pause policy
@@ -62,14 +67,14 @@ pub fn read_control(data_dir: &Path) -> PauseState {
             .and_then(|m| m.modified())
             .ok()
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map_or_else(now_secs, |d| d.as_secs());
+            .map_or_else(crate::clock::now_secs, |d| d.as_secs());
         state.until = Some(cap_pause_end(state.until, written));
         state.reason = state.reason.map(|r| r.chars().take(200).collect());
     }
 
     if state.paused
         && let Some(until) = state.until
-        && now_secs() >= until
+        && crate::clock::now_secs() >= until
     {
         // Expired: auto-resume
         clear_pause(data_dir);
@@ -82,7 +87,7 @@ pub fn read_control(data_dir: &Path) -> PauseState {
 /// Set pause state with an optional duration in seconds (None or excessive values capped at MAX_PAUSE_SECS).
 pub fn set_pause(data_dir: &Path, duration_secs: Option<u64>, reason: &str) {
     let duration = duration_secs.unwrap_or(MAX_PAUSE_SECS).min(MAX_PAUSE_SECS);
-    let until = Some(now_secs() + duration);
+    let until = Some(crate::clock::now_secs() + duration);
     let state = PauseState {
         paused: true,
         until,
@@ -139,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_pause_expiration() {
-        let temp = std::env::temp_dir().join(format!("vitals_test_{}", now_secs()));
+        let temp = std::env::temp_dir().join(format!("vitals_test_{}", crate::clock::now_secs()));
         let _ = fs::create_dir_all(&temp);
 
         // Pause for 2 seconds to avoid subsecond boundary rollover
@@ -158,7 +163,8 @@ mod tests {
 
     #[test]
     fn test_clear_pause() {
-        let temp = std::env::temp_dir().join(format!("vitals_test_clear_{}", now_secs()));
+        let temp =
+            std::env::temp_dir().join(format!("vitals_test_clear_{}", crate::clock::now_secs()));
         let _ = fs::create_dir_all(&temp);
 
         set_pause(&temp, None, "indefinite");
