@@ -173,16 +173,29 @@ jobs:
         run: |
           [ -n "$KEYSTORE" ] || { echo "::error::Repository secret ANDROID_KEYSTORE_BASE64 is not set"; exit 1; }
           # Phones only accept an update signed with the key of the installed app.
-          mkdir -p ~/.android
-          printf '%s' "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/vitals.keystore"
       - name: Test and build APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+          # Sign with that key by path: Gradle's default debug key location differs on the runner,
+          # and a missing key is silently replaced by a new one that phones then reject.
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/vitals.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android
+          rm "$RUNNER_TEMP/vitals.keystore"
           mkdir -p ../dist
           cp app/build/outputs/apk/debug/app-debug.apk "../dist/vitals-app-${{ needs.versions.outputs.version }}.apk"
-          rm ~/.android/debug.keystore
+      - name: APK is signed with the key of every earlier release
+        run: |
+          # SHA-256 of the signing certificate of every APK since the first (0.2.x).
+          want=1b632788ab0bd6056e60b59849abc185c0ee75db6a3f8faeccc40fae33eb42f7
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          got=$("$apksigner" verify --print-certs dist/*.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          echo "signer: $got"
+          [ "$got" = "$want" ] || { echo "::error::APK signed with $got, not $want: phones would refuse the update. Check ANDROID_KEYSTORE_BASE64."; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: release-android
@@ -237,7 +250,7 @@ jobs:
           # Without the key, this step prints the command to run from a logged-in machine:
           #   cd convex && npx convex run --prod releases:publish '<args>'
           if [ -z "$CONVEX_DEPLOY_KEY" ]; then PUBLISH=0; else PUBLISH=1; fi
-          npm ci --no-audit --no-fund
+          npm install --no-audit --no-fund
           apk="vitals-app-$VERSION.apk"
           sha=$(sed -n "s/^\([0-9a-f]\{64\}\)  $apk\$/\1/p" ../dist/SHA256SUMS)
           code=$(echo "$VERSION" | awk -F. '{ print $1 * 10000 + $2 * 100 + $3 }')
