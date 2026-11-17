@@ -215,6 +215,13 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: One-line installers and release notes
+        run: |
+          # install.sh is what `curl -fsSL .../releases/latest/download/install.sh | sh` fetches.
+          cp installer/linux/get.sh dist/install.sh
+          cp installer/get.ps1 dist/install.ps1   # irm .../install.ps1 | iex
+          sed "s/@VERSION@/$VERSION/g" installer/RELEASE_NOTES.md > "$RUNNER_TEMP/notes.md"
+
       - name: SHA256SUMS
         working-directory: dist
         run: |
@@ -231,13 +238,13 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "Release $GITHUB_REF_NAME already exists; uploading the files to it."
             gh release upload "$GITHUB_REF_NAME" dist/* --clobber
-            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest               --notes-file "$RUNNER_TEMP/notes.md"
             exit 0
           fi
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "Vitals $GITHUB_REF_NAME" \
             --latest \
-            --notes "Vitals $VERSION for Windows, Linux and Android. Installed agents and apps update themselves; checksums in SHA256SUMS."
+            --notes-file "$RUNNER_TEMP/notes.md"
 
       - uses: actions/setup-node@v4
         with:
