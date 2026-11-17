@@ -21,6 +21,8 @@ use futures::StreamExt;
 use qrcode::render::unicode;
 use qrcode::{Color, QrCode};
 
+use crate::payload::text;
+
 /// What the legacy QR code contains. The site and app scanners read the code after the prefix or from the URL.
 #[allow(dead_code)]
 pub const QR_PREFIX: &str = "VITALS-PAIR:";
@@ -97,12 +99,23 @@ pub fn spaced(code: &str) -> String {
     }
 }
 
-fn text(s: &str) -> Value {
-    Value::String(s.to_string())
-}
-
 fn os_name() -> &'static str {
     if cfg!(windows) { "windows" } else { "linux" }
+}
+
+/// A fresh pairing code from `pairing:start`; None when the backend gave none.
+async fn request_code(client: &mut ConvexClient, secret_hash: &str, name: &str) -> Option<String> {
+    let mut args = BTreeMap::new();
+    args.insert("secretHash".to_string(), text(secret_hash));
+    args.insert("name".to_string(), text(name));
+    args.insert("os".to_string(), text(os_name()));
+    match client.mutation("pairing:start", args).await {
+        Ok(FunctionResult::Value(Value::Object(o))) => match o.get("code") {
+            Some(Value::String(c)) if !c.is_empty() => Some(c.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Where pairing progress is shown.
@@ -239,22 +252,11 @@ pub async fn run(path: &Path, ui: Ui, skip_if_paired: bool) {
 
     // One code per round; an expired code starts a new round.
     loop {
-        let mut args = BTreeMap::new();
-        args.insert("secretHash".to_string(), text(&secret_hash));
-        args.insert("name".to_string(), text(&name));
-        args.insert("os".to_string(), text(os_name()));
-        let code = match client.mutation("pairing:start", args).await {
-            Ok(FunctionResult::Value(Value::Object(o))) => match o.get("code") {
-                Some(Value::String(c)) => c.clone(),
-                _ => String::new(),
-            },
-            _ => String::new(),
-        };
-        if code.is_empty() {
+        let Some(code) = request_code(&mut client, &secret_hash, &name).await else {
             ui.status("error", "", 0, "Could not get a pairing code; retrying...");
             tokio::time::sleep(Duration::from_secs(5)).await;
             continue;
-        }
+        };
         let expires = Instant::now() + CODE_LIFETIME;
         let payload = pairing_url(&config.convex_url, &code);
         ui.show_code(&payload, &code);
@@ -382,20 +384,7 @@ pub async fn run_gui_mode(
             return;
         }
 
-        let mut args = BTreeMap::new();
-        args.insert("secretHash".to_string(), text(&secret_hash));
-        args.insert("name".to_string(), text(&name));
-        args.insert("os".to_string(), text(os_name()));
-
-        let code = match client.mutation("pairing:start", args).await {
-            Ok(FunctionResult::Value(Value::Object(o))) => match o.get("code") {
-                Some(Value::String(c)) => c.clone(),
-                _ => String::new(),
-            },
-            _ => String::new(),
-        };
-
-        if code.is_empty() {
+        let Some(code) = request_code(&mut client, &secret_hash, &name).await else {
             update(
                 "error",
                 "",
@@ -404,7 +393,7 @@ pub async fn run_gui_mode(
             );
             tokio::time::sleep(Duration::from_secs(4)).await;
             continue;
-        }
+        };
 
         let payload = pairing_url(&config.convex_url, &code);
         let hbm = crate::pair_gui::generate_qr_hbitmap(&payload, 200);

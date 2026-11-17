@@ -9,7 +9,7 @@
 //!   ("boot", "sleep", "wake") with timestamps.
 
 use std::collections::VecDeque;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 pub const MAX_EVENTS: usize = 20;
 /// Gap between ticks that indicates the computer went to sleep/suspended.
@@ -37,13 +37,6 @@ pub struct UsageTracker {
     current_day: u64,
     active_time_today_sec: u64,
     events: VecDeque<UsageEvent>,
-}
-
-pub fn now_wall_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
 }
 
 impl UsageTracker {

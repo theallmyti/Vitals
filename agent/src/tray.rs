@@ -50,8 +50,34 @@ const ID_RESTART_SERVICE: usize = 2050;
 const ID_UNPAIR: usize = 2060;
 const ID_EXIT: usize = 2099;
 
-static RESTARTING_UNTIL: AtomicU64 = AtomicU64::new(0);
-static UNPAIRING_UNTIL: AtomicU64 = AtomicU64::new(0);
+/// A 10-second window after a menu action, so repeated clicks are ignored while it runs.
+struct Cooldown(AtomicU64);
+
+impl Cooldown {
+    const fn new() -> Self {
+        Cooldown(AtomicU64::new(0))
+    }
+
+    fn active_at(&self, now: u64) -> bool {
+        now < self.0.load(Ordering::SeqCst)
+    }
+
+    fn active(&self) -> bool {
+        self.active_at(crate::clock::now_secs())
+    }
+
+    /// Starts a cooldown unless one is running; false means ignore this click.
+    fn try_start_at(&self, now: u64, secs: u64) -> bool {
+        if self.active_at(now) {
+            return false;
+        }
+        self.0.store(now + secs, Ordering::SeqCst);
+        true
+    }
+}
+
+static RESTARTING: Cooldown = Cooldown::new();
+static UNPAIRING: Cooldown = Cooldown::new();
 
 fn to_wide(s: &str) -> Vec<u16> {
     OsStr::new(s)
@@ -270,8 +296,8 @@ fn update_tray(hwnd: HWND) {
 
         let ctrl = control::read_control(&state.data_dir);
         let status = control::read_status(&state.data_dir);
-        let is_restarting = control::now_secs() < RESTARTING_UNTIL.load(Ordering::SeqCst);
-        let is_unpairing = control::now_secs() < UNPAIRING_UNTIL.load(Ordering::SeqCst);
+        let is_restarting = RESTARTING.active();
+        let is_unpairing = UNPAIRING.active();
 
         let icon = if ctrl.paused {
             state.hicon_paused
@@ -285,7 +311,7 @@ fn update_tray(hwnd: HWND) {
             "Vitals Agent: Unpairing device...\nPlease wait...".to_string()
         } else if ctrl.paused {
             if let Some(until) = ctrl.until {
-                let now = control::now_secs();
+                let now = crate::clock::now_secs();
                 let rem_min = if until > now {
                     (until - now) / 60 + 1
                 } else {
@@ -352,8 +378,8 @@ fn show_context_menu(hwnd: HWND) {
     let is_paused = ctrl.paused;
     let is_unpaired = status.as_ref().is_some_and(|s| s.state == "unpaired");
     let is_stopped = status.as_ref().is_some_and(|s| s.state == "stopped");
-    let is_restarting = control::now_secs() < RESTARTING_UNTIL.load(Ordering::SeqCst);
-    let is_unpairing = control::now_secs() < UNPAIRING_UNTIL.load(Ordering::SeqCst);
+    let is_restarting = RESTARTING.active();
+    let is_unpairing = UNPAIRING.active();
 
     unsafe {
         let hmenu = CreatePopupMenu();
@@ -417,7 +443,7 @@ fn show_context_menu(hwnd: HWND) {
             "Status: ⏳ Unpairing device...".to_string()
         } else if is_paused {
             if let Some(until) = ctrl.until {
-                let now = control::now_secs();
+                let now = crate::clock::now_secs();
                 let rem_min = if until > now {
                     (until - now) / 60 + 1
                 } else {
@@ -563,13 +589,10 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             update_tray(hwnd);
         }
         ID_RESTART_SERVICE => {
-            let now = control::now_secs();
-            let restarting_until = RESTARTING_UNTIL.load(Ordering::SeqCst);
-            if now < restarting_until {
-                return; // Guard against rapid duplicate clicks
+            // Guard against rapid duplicate clicks; 10-second cooldown and visual indicator.
+            if !RESTARTING.try_start_at(crate::clock::now_secs(), 10) {
+                return;
             }
-            // 10-second cooldown and visual indicator
-            RESTARTING_UNTIL.store(now + 10, Ordering::SeqCst);
             update_tray(hwnd);
 
             std::thread::spawn(|| {
@@ -588,12 +611,10 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             });
         }
         ID_UNPAIR => {
-            let now = control::now_secs();
-            let unpairing_until = UNPAIRING_UNTIL.load(Ordering::SeqCst);
-            if now < unpairing_until {
-                return; // Guard against rapid duplicate clicks
+            // Guard against rapid duplicate clicks.
+            if !UNPAIRING.try_start_at(crate::clock::now_secs(), 10) {
+                return;
             }
-            UNPAIRING_UNTIL.store(now + 10, Ordering::SeqCst);
             update_tray(hwnd);
 
             let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("vitals.exe"));
@@ -614,15 +635,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                 let convex_url = current_status.as_ref().and_then(|s| s.convex_url.clone());
                 control::write_status(
                     &data_dir_clone,
-                    &control::AgentStatus {
-                        state: "unpaired".to_string(),
-                        cpu_util: 0.0,
-                        ram_pct: 0.0,
-                        temp_c: None,
-                        paused_until: None,
-                        last_tick: control::now_secs(),
-                        convex_url,
-                    },
+                    &control::AgentStatus::idle("unpaired", convex_url),
                 );
 
                 // 3. Elevated: unpair online, then restart the service to enter the unpaired
@@ -752,22 +765,12 @@ mod tests {
     }
 
     #[test]
-    fn test_restart_cooldown_logic() {
-        let now = control::now_secs();
-        RESTARTING_UNTIL.store(now + 10, Ordering::SeqCst);
-        let cooldown = RESTARTING_UNTIL.load(Ordering::SeqCst);
-        assert!(cooldown >= now + 9);
-        RESTARTING_UNTIL.store(0, Ordering::SeqCst);
-        assert_eq!(RESTARTING_UNTIL.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
-    fn test_unpair_cooldown_logic() {
-        let now = control::now_secs();
-        UNPAIRING_UNTIL.store(now + 10, Ordering::SeqCst);
-        let cooldown = UNPAIRING_UNTIL.load(Ordering::SeqCst);
-        assert!(cooldown >= now + 9);
-        UNPAIRING_UNTIL.store(0, Ordering::SeqCst);
-        assert_eq!(UNPAIRING_UNTIL.load(Ordering::SeqCst), 0);
+    fn cooldown_ignores_repeat_clicks_until_it_ends() {
+        let cooldown = Cooldown::new();
+        assert!(cooldown.try_start_at(100, 10));
+        assert!(!cooldown.try_start_at(105, 10));
+        assert!(cooldown.active_at(109));
+        assert!(!cooldown.active_at(110));
+        assert!(cooldown.try_start_at(110, 10));
     }
 }
