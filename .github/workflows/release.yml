@@ -214,9 +214,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Re-running a failed workflow: the release may already be up; go on to the push step.
+          # The release may already exist (a re-run, or one made by hand): fill it in, don't skip it.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME already exists; not re-creating it."
+            echo "Release $GITHUB_REF_NAME already exists; uploading the files to it."
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest
             exit 0
           fi
           gh release create "$GITHUB_REF_NAME" dist/* \

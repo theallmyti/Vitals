@@ -12,8 +12,11 @@ android/local.properties
 *.aab
 *.exe
 
-# Design docs (kept local, not in the repo)
-docs/
+# Design docs (kept local, not in the repo), except the legal documents the installers ship
+docs/*
+!docs/PRIVACY.md
+!docs/TERMS.md
+!docs/COOKIE_POLICY.md
 
 # Secrets (see docs/Security.md section 10)
 .env*
