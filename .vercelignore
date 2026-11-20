@@ -1,0 +1,7 @@
+# Vercel only needs the landing page. Upload nothing else from this monorepo.
+/*
+!/site
+!/vercel.json
+# never publish local CLI files (site/.env.local holds a Vercel login token)
+/site/.env*
+/site/.vercel

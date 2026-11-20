@@ -1,7 +1,7 @@
 # Privacy Policy — Vitals
 
-**Effective date:** 11 November 2026 · **Last updated:** 15 November 2026
-**Version:** 2.0
+**Effective date:** 11 November 2026 · **Last updated:** 20 November 2026
+**Version:** 2.1
 
 > **Plain-language summary.** Vitals shows your computers' hardware health (CPU, RAM, GPU, disks, battery, temperatures) on your own dashboard and phone. To do that, we store your email, a hash of your password, details about the computers you pair, and recent metrics. By default the agent also sends the names of the top 5 programs by memory use and when your computer booted, slept and woke; you can turn that off. The Android app uses Google Firebase for notifications and Google Analytics for Firebase for app-usage statistics. We do not sell your data. Minute-by-minute history is deleted after 7 days. You can export your data or delete your account at any time.
 
@@ -18,13 +18,14 @@ Vitals is a free, open-source student project built and run by three individuals
 Vitals is **not a company**. For the hosted Vitals service described below, the three of us jointly decide why and how your personal data is processed. That makes us the **Data Fiduciary** under India's Digital Personal Data Protection Act, 2023 ("DPDP Act") and the **controller** under the EU/UK General Data Protection Regulation ("GDPR"), where those laws apply.
 
 **Privacy and grievance contact:** Aditya Prasad — contact@vitals.dpdns.org
-Source code and public issues: https://github.com/theallmyti/Monitoring-System
+Source code and public issues: https://github.com/theallmyti/Vitals
 Please do not post personal information in public GitHub issues; use the email above.
 
 ## 2. What this policy covers
 
 This policy covers the **hosted Vitals service** run by us:
 
+- the **Vitals website** at vitals.dpdns.org,
 - the **Vitals web dashboard**,
 - the **Vitals Agent** (Windows and Linux) when it reports to our backend, and
 - the **Vitals Android app**.
@@ -82,6 +83,14 @@ Vitals does **not** collect: keystrokes or clipboard contents; screenshots, scre
 ### 3.6 Data kept only on your computer
 The agent keeps its configuration (including its secret key) and log files on your computer. They are not sent to us.
 
+### 3.7 Visiting the Vitals website
+The website at vitals.dpdns.org has no account, forms, cookies, analytics or advertising. When you visit it:
+
+- **Vercel** serves the page and, like any web host, receives your IP address, browser details and the pages you request, which it keeps in short-lived request logs.
+- **jsDelivr** serves the open-source 3D graphics library the page uses, and receives the same kind of request information.
+- **GitHub** receives a request from your browser when you open the download window (to look up the newest release) and when you download a file.
+- If you turn on the optional ambient sound, your browser remembers that choice in its own `localStorage`. It is never sent to us.
+
 ## 4. Why we use your data, and on what basis
 
 | Purpose | India (DPDP Act) | EU/UK (GDPR) |
@@ -105,6 +114,9 @@ Vitals is only for people **aged 18 or older**. You must confirm you are 18+ whe
 |---|---|---|---|
 | **Convex, Inc.** | Database, backend functions, real-time sync | All account, security and device data in Section 3.1–3.3 | United States (hosted on Amazon Web Services) |
 | **Cloudflare, Inc.** | Hosts the web dashboard (Cloudflare Pages), CDN, DDoS protection, DNS for vitals.dpdns.org, and forwards mail sent to contact@vitals.dpdns.org to our inbox (Email Routing) | IP address, browser details and request logs when you load the dashboard; sender, recipient and content of emails you send to our contact address | Global network |
+| **Vercel Inc.** | Hosts the Vitals website (vitals.dpdns.org) | IP address, browser details and request logs when you visit the website | United States and global network |
+| **jsDelivr** (open-source CDN) | Delivers the 3D graphics library used by the website | IP address and browser details when the website loads | Global network |
+| **GitHub, Inc.** | Hosts the source code and the release downloads; the website asks its API for the newest release | IP address and browser details when you open the download window or download a file | United States |
 | **Google LLC (Firebase)** | Push notifications (FCM) and Google Analytics for Firebase in the Android app | FCM token and the analytics data in Section 3.4 | United States and global |
 | **Resend, Inc.** | Sending password-reset emails | Your email address and the email content (the one-time reset code) | United States |
 
@@ -145,7 +157,7 @@ We may need to confirm you own the account (for example, by asking you to email 
 
 ## 10. How we protect data
 
-- Traffic between the agent, app, dashboard and backend uses HTTPS/TLS provided by Convex, Cloudflare and Google.
+- Traffic between the agent, app, dashboard and backend uses HTTPS/TLS provided by Convex, Cloudflare and Google. The website is served over HTTPS by Vercel.
 - Passwords are stored only as salted scrypt hashes. Sign-in tokens and device secrets are stored only as SHA-256 hashes.
 - Every dashboard request checks that the device belongs to the signed-in user.
 - Sign-ins, sign-ups and pairing attempts are rate-limited.

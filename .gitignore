@@ -53,3 +53,4 @@ _nexus_ref/
 
 # Local Cloudflare CLI cache (account details)
 .cloudflare/
+.vercel

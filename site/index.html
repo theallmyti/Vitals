@@ -53,7 +53,7 @@ body { margin: 0; background: var(--navy); color: var(--white); font-family: var
 
 /* top bar */
 .bar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 7; transition: background .25s;
   display: flex; align-items: center; justify-content: space-between;
   padding: max(14px, env(safe-area-inset-top)) 16px 14px;
 }
@@ -114,7 +114,7 @@ body { margin: 0; background: var(--navy); color: var(--white); font-family: var
 
 /* sound toggle */
 #snd {
-  position: fixed; z-index: 6; right: 16px; bottom: max(16px, env(safe-area-inset-bottom));
+  position: fixed; z-index: 8; right: 16px; bottom: max(16px, env(safe-area-inset-bottom));
   display: flex; align-items: center; gap: 8px; cursor: pointer;
   background: rgba(10,20,34,.75); color: var(--gray); border: 2px solid #2A3F5F; border-radius: 6px;
   padding: 9px 11px; font: 8px/1 var(--pixel); letter-spacing: .5px;
@@ -124,6 +124,49 @@ body { margin: 0; background: var(--navy); color: var(--white); font-family: var
 #snd:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
 #snd .waves { opacity: .25; }
 #snd[aria-pressed="true"] .waves { opacity: 1; }
+
+/* ---------- after the story: FAQ + footer scroll up over the finished scene ---------- */
+body.past .bar { background: rgba(10,20,34,.94); box-shadow: 0 2px 0 #2A3F5F; }
+body.past #snd { display: none; }
+.more { position: relative; z-index: 5; }
+.faq { background: var(--navy); padding: 96px 16px 88px; border-top: 3px solid #2A3F5F; }
+.faq-in { max-width: 760px; margin: 0 auto; }
+.faq h2 { font: clamp(18px, 3vw, 28px)/1.5 var(--pixel); color: var(--yellow); margin: 0 0 8px; }
+.faq .lead { font: 18px/1.5 var(--body); color: var(--gray); margin: 0 0 32px; }
+.faq details { background: var(--navy-card); border: 2px solid #2A3F5F; border-radius: 8px; margin-bottom: 10px; }
+.faq details[open] { border-color: #3A5580; }
+.faq summary {
+  list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 18px; font: 600 18px/1.35 var(--body); color: var(--white);
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 14px/1 var(--pixel); color: var(--yellow); flex: none; }
+.faq details[open] summary::after { content: "-"; }
+.faq summary:focus-visible { outline: 3px solid var(--yellow); outline-offset: -3px; border-radius: 6px; }
+.faq .a { padding: 0 18px 18px; font: 17px/1.6 var(--body); color: #CFD8DC; }
+.faq .a p { margin: 0 0 10px; }
+.faq .a p:last-child { margin-bottom: 0; }
+.faq .a ul { margin: 0 0 10px; padding-left: 20px; }
+.faq .a li { margin: 4px 0; }
+.faq .a a { color: var(--yellow); }
+.faq .a b { color: var(--white); }
+.faq .linkbtn { all: unset; cursor: pointer; color: var(--yellow); text-decoration: underline; }
+.faq .linkbtn:focus-visible { outline: 2px solid var(--yellow); }
+
+.foot { background: var(--cream); color: var(--ink); padding: 56px 16px max(40px, env(safe-area-inset-bottom)); border-top: 3px solid var(--brown); }
+.foot-in { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 420px) auto; justify-content: space-between; gap: 40px 64px; }
+@media (max-width: 860px) { .foot-in { grid-template-columns: 1fr; } }
+.foot-brand { max-width: 420px; }
+.foot-brand .name { display: flex; align-items: center; gap: 12px; font: 20px/1 var(--pixel); color: var(--ink); margin: 0 0 18px; }
+.foot-brand .name img { width: 44px; height: 44px; border-radius: 10px; image-rendering: pixelated; }
+.foot-brand p { font: 16px/1.55 var(--body); color: var(--ink-muted); margin: 0; }
+.foot-cols { display: flex; flex-wrap: wrap; gap: 32px 56px; }
+.foot-col h3 { font: 11px/1 var(--pixel); color: var(--ink); margin: 6px 0 18px; letter-spacing: .5px; }
+.foot-col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.foot-col a, .foot-col button { all: unset; cursor: pointer; font: 16px/1.3 var(--body); color: var(--ink-muted); }
+.foot-col a:hover, .foot-col button:hover { color: #2e7d32; text-decoration: underline; }
+.foot-col a:focus-visible, .foot-col button:focus-visible { outline: 2px solid var(--brown); outline-offset: 3px; }
+.foot-base { max-width: 1100px; margin: 40px auto 0; padding-top: 18px; border-top: 2px dashed var(--brown); font: 14px/1.4 var(--body); color: var(--ink-muted); }
 
 /* download dialog */
 #dl {
@@ -246,6 +289,128 @@ body.nogl #card { position: static; transform: none; opacity: 1; visibility: vis
 </button>
 
 <div id="track"></div>
+
+<div class="more">
+<section class="faq" aria-labelledby="faq-title">
+  <div class="faq-in">
+    <h2 id="faq-title">Questions</h2>
+    <p class="lead">The things people ask before they install it.</p>
+
+    <details>
+      <summary>Where do I download Vitals?</summary>
+      <div class="a">
+        <p>Press <button class="linkbtn" type="button" data-dl>Download</button> for the Windows installer, the Linux and Raspberry Pi files, and the Android app. Every file comes from the project's <a href="https://github.com/theallmyti/Vitals/releases/latest">GitHub Releases</a> page.</p>
+        <p>Install the agent on each computer you want to watch, then pair it with the phone app by scanning the QR code it shows.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Is it free?</summary>
+      <div class="a"><p>Yes. Vitals is free and open source under the <a href="https://github.com/theallmyti/Vitals/blob/main/LICENSE">MIT licence</a>. There are no ads and no paid tier.</p></div>
+    </details>
+
+    <details>
+      <summary>Which computers does it work on?</summary>
+      <div class="a">
+        <ul>
+          <li><b>Windows</b> 10 and 11, 64-bit</li>
+          <li><b>Linux</b> with systemd: Ubuntu, Debian, Fedora, Arch and others, on x86-64 or ARM64</li>
+          <li><b>Raspberry Pi</b> 3, 4 and 5 running a 64-bit OS such as Raspberry Pi OS (64-bit)</li>
+        </ul>
+        <p>macOS isn't supported yet.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>What Android version do I need?</summary>
+      <div class="a"><p>Android 8.0 (Oreo) or newer. There's no iPhone app yet.</p></div>
+    </details>
+
+    <details>
+      <summary>How much RAM and CPU does it use?</summary>
+      <div class="a">
+        <p>Very little. Measured on real machines while nobody is watching:</p>
+        <ul>
+          <li>Windows laptop: <b>14.2 MB</b> RAM, 0.08% of one CPU core</li>
+          <li>Linux server: <b>11.8 MB</b> RAM, 0.04%</li>
+          <li>Raspberry Pi 4: <b>9.4 MB</b> RAM, 0.12%</li>
+        </ul>
+        <p>While you have a device open in the app it sends live readings every second and stays under 25 MB and 1% of a core. The optional Windows tray icon adds about 15 MB.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Do I need to open ports or have a static IP?</summary>
+      <div class="a"><p>No. Every connection goes out from your computer, so it works behind home routers, CGNAT and mobile data with nothing to forward.</p></div>
+    </details>
+
+    <details>
+      <summary>Why does Windows warn me when I run the installer?</summary>
+      <div class="a">
+        <p>The installer isn't code-signed yet, so SmartScreen shows a notice. Choose <b>More info</b>, then <b>Run anyway</b>.</p>
+        <p>To check the file is genuine, compare its SHA-256 hash with the <code>SHA256SUMS</code> file on the <a href="https://github.com/theallmyti/Vitals/releases/latest">release page</a>.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Why does it ask to install a driver on Windows?</summary>
+      <div class="a"><p>Windows only lets programs read CPU temperatures through a driver. Vitals offers the signed PawnIO driver for that. It's optional: without it you still get load, clock speeds, RAM, GPU, battery and drives, just not CPU temperatures.</p></div>
+    </details>
+
+    <details>
+      <summary>What data does Vitals keep?</summary>
+      <div class="a">
+        <p>Your email, a hash of your password, details of the computers you pair, and their recent readings. By default it also sends the names of the top 5 programs by memory use, which you can turn off.</p>
+        <p>Minute-by-minute history is deleted after 7 days. Nothing is sold. You can export your data or delete your account at any time. The <a href="https://github.com/theallmyti/Vitals/blob/main/docs/PRIVACY.md">privacy policy</a> has the details.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Can I contribute?</summary>
+      <div class="a">
+        <p>Yes. Report bugs or suggest features in <a href="https://github.com/theallmyti/Vitals/issues">GitHub Issues</a>, and send changes as pull requests. Small fixes are welcome without asking first.</p>
+        <p>Found a security problem? Please email <a href="mailto:contact@vitals.dpdns.org">contact@vitals.dpdns.org</a> instead of opening a public issue.</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="foot-in">
+    <div class="foot-brand">
+      <p class="name"><img src="logo.png" alt="">Vitals</p>
+      <p>Vitals is a free, open-source hardware monitor for your PCs, servers and Raspberry Pis. It shows temperatures, load and health on your phone and alerts you when something runs hot.</p>
+    </div>
+    <div class="foot-cols">
+      <nav class="foot-col" aria-label="Legal">
+        <h3>Links</h3>
+        <ul>
+          <li><a href="https://github.com/theallmyti/Vitals/blob/main/docs/PRIVACY.md">Privacy Policy</a></li>
+          <li><a href="https://github.com/theallmyti/Vitals/blob/main/docs/TERMS.md">Terms &amp; Conditions</a></li>
+          <li><a href="https://github.com/theallmyti/Vitals/blob/main/docs/COOKIE_POLICY.md">Cookie Policy</a></li>
+          <li><a href="https://github.com/theallmyti/Vitals/blob/main/LICENSE">MIT Licence</a></li>
+        </ul>
+      </nav>
+      <nav class="foot-col" aria-label="Project">
+        <h3>Project</h3>
+        <ul>
+          <li><button type="button" data-dl>Download</button></li>
+          <li><a href="https://github.com/theallmyti/Vitals">Source code</a></li>
+          <li><a href="https://github.com/theallmyti/Vitals/releases/latest">Releases &amp; checksums</a></li>
+          <li><a href="https://github.com/theallmyti/Vitals/issues">Report a bug</a></li>
+        </ul>
+      </nav>
+      <nav class="foot-col" aria-label="Contact">
+        <h3>Contact</h3>
+        <ul>
+          <li><a href="mailto:contact@vitals.dpdns.org">contact@vitals.dpdns.org</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+  <p class="foot-base">&copy; 2026 The Vitals authors &middot; Released under the MIT licence</p>
+</footer>
+</div>
 
 <script>
 /* Download dialog. A plain script, independent of the 3D module, so it works even when WebGL doesn't. */
@@ -714,7 +879,14 @@ addEventListener('resize', resize); resize();
 
 /* ------------------------------------------------------------- scroll */
 let target = 0, prog = 0;
-function readScroll() { const max = document.documentElement.scrollHeight - innerHeight; target = max > 0 ? clamp01(scrollY / max) : 0; }
+const track = document.getElementById('track');
+let covered = false; // true once the FAQ fills the screen: stop drawing the hidden 3D scene
+function readScroll() {
+  const max = track.offsetHeight - innerHeight;
+  target = max > 0 ? clamp01(scrollY / max) : 0;
+  covered = scrollY >= track.offsetHeight;
+  document.body.classList.toggle('past', scrollY > max + innerHeight * .5);
+}
 addEventListener('scroll', readScroll, { passive: true }); readScroll(); prog = target;
 document.getElementById('top').addEventListener('click', e => { e.preventDefault(); scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); });
 
@@ -842,7 +1014,7 @@ function frame(nowMs) {
     lock.rotation.y = Math.sin(t * .8) * .25;
     cloud.position.y = P.cloud.y + Math.sin(t * .5) * .15;
   }
-  composer.render();
+  if (!covered) composer.render();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

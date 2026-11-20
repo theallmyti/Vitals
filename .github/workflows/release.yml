@@ -209,8 +209,13 @@ jobs:
         run: |
           # SHA-256 of the signing certificate of every APK since the first (0.2.x).
           want=1b632788ab0bd6056e60b59849abc185c0ee75db6a3f8faeccc40fae33eb42f7
-          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
-          got=$("$apksigner" verify --print-certs dist/*.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          # Newest build-tools that actually ships apksigner (a bare "newest folder" can lack it).
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          echo "using $apksigner"
+          out=$("$apksigner" verify --verbose --print-certs dist/*.apk 2>&1) || { echo "$out"; echo "::error::apksigner could not verify the APK"; exit 1; }
+          echo "$out"
+          # Every distinct signer certificate, whatever label this apksigner version prints before it.
+          got=$(printf '%s\n' "$out" | sed -n 's/.*certificate SHA-256 digest: *\([0-9a-fA-F]\{64\}\).*/\1/p' | tr 'A-F' 'a-f' | sort -u)
           echo "signer: $got"
           [ "$got" = "$want" ] || { echo "::error::APK signed with $got, not $want: phones would refuse the update. Check ANDROID_KEYSTORE_BASE64."; exit 1; }
       - uses: actions/upload-artifact@v4
