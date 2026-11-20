@@ -190,40 +190,40 @@ fun DeviceCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Metrics Row: CPU, GPU, RAM, Battery
+            // Metrics Row: CPU temp, GPU temp, RAM %, CPU usage %
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Columns share the width evenly; GPU / Battery are left out on devices without them (e.g. a Pi).
+                // Columns share the width evenly; GPU is left out on devices without one (e.g. a Pi).
                 val showGpu = device.hasGpu ?: (stats.gpu != null)
-                val showBattery = device.hasBattery ?: (stats.battery != null)
                 val cell = Modifier.weight(1f)
-                // CPU
+
+                // CPU Temp (package temp; fallback to avg)
                 val cpuTemp = if (stats.cpu.packageTemperature > 0f) stats.cpu.packageTemperature else stats.cpu.averageTemperature
                 val cpuDisplay = if (isOnline) {
                     if (cpuTemp > 0f) {
                         if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${cpuTemp.roundToInt()}°C"
-                    } else if (stats.cpu.totalUtilization > 0f) {
-                        "${stats.cpu.totalUtilization.roundToInt()}%"
                     } else "--"
                 } else "--"
                 StatMiniBox(value = cpuDisplay, label = "CPU", modifier = cell)
 
-                // GPU
+                // GPU Temp
                 val gpuDisplay = if (isOnline && stats.gpu != null) {
                     val gpuTemp = stats.gpu.temperature
                     if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${gpuTemp.roundToInt()}°C"
                 } else "--"
                 if (showGpu) StatMiniBox(value = gpuDisplay, label = "GPU", modifier = cell)
 
-                // RAM
+                // RAM %
                 val ramDisplay = if (isOnline) "${stats.ram.usagePercent.roundToInt()}%" else "--"
                 StatMiniBox(value = ramDisplay, label = "RAM", modifier = cell)
 
-                // Battery
-                val batteryDisplay = if (isOnline && stats.battery != null) "${stats.battery.percentage}%" else "--"
-                if (showBattery) StatMiniBox(value = batteryDisplay, label = "Battery", modifier = cell)
+                // CPU Usage % (replaces Battery in the top row; Battery is in the expandable detail)
+                val cpuUsageDisplay = if (isOnline && stats.cpu.totalUtilization > 0f) {
+                    "${stats.cpu.totalUtilization.roundToInt()}%"
+                } else "--"
+                StatMiniBox(value = cpuUsageDisplay, label = "CPU %", modifier = cell)
             }
         }
     }

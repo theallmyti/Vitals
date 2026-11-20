@@ -22,8 +22,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
@@ -553,21 +558,75 @@ private fun OverviewSection(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // 4. Battery Card (if present)
+    // 4. Battery Card (if present) — tappable header shows %, chevron expands full detail
     if (stats.battery != null) {
+        var batteryExpanded by remember { mutableStateOf(false) }
         val bPct = if (isOnline) "${stats.battery.percentage}%" else "--"
         val bSub = if (isOnline) {
             if (stats.battery.isCharging) "Charging (${stats.battery.powerRateWatts}W)" else "Discharging"
         } else "Device offline"
         val bProg = if (isOnline) stats.battery.percentage / 100f else 0f
-        CreamBarMetricCard(
-            icon = Icons.Default.BatteryFull,
-            title = "Battery",
-            mainValue = bPct,
-            subValue = bSub,
-            progress = bProg,
-            higherIsBetter = true
-        )
+
+        // Tappable header row: Battery icon, label, pct, chevron
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(CreamSurface)
+                .border(1.dp, CreamBorder, RoundedCornerShape(8.dp))
+                .clickable { batteryExpanded = !batteryExpanded }
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.BatteryFull,
+                contentDescription = null,
+                tint = CreamText,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Battery",
+                fontFamily = PixelFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = CreamText,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = bPct,
+                fontFamily = PixelFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = if (isOnline) CreamGreenAccent else CreamTextSecondary
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = if (batteryExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (batteryExpanded) "Collapse battery" else "Expand battery",
+                tint = CreamTextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // Expandable full battery detail
+        AnimatedVisibility(
+            visible = batteryExpanded,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Column {
+                Spacer(modifier = Modifier.height(8.dp))
+                CreamBarMetricCard(
+                    icon = Icons.Default.BatteryFull,
+                    title = "Battery Detail",
+                    mainValue = bPct,
+                    subValue = bSub,
+                    progress = bProg,
+                    higherIsBetter = true
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(12.dp))
     }
 
