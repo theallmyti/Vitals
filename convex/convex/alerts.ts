@@ -3,10 +3,12 @@
 // watching), so an alert fires within about a minute of the threshold being crossed.
 // Thresholds come from the app's settings (devices:updateThresholds): a device's own row, then the
 // account-wide row (no deviceId), then the defaults below, field by field.
-// Rows are written with `pushed: false`; FCM delivery is not wired yet.
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+// Rows are written with `pushed: false`, and dispatched asynchronously via Google FCM v1.
+import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { deviceMemberIds } from "./model";
+import { deviceMemberIds, requireUser } from "./model";
 
 export const DEFAULT_THRESHOLDS = { cpuTempC: 90, gpuTempC: 85, ramPct: 90 };
 // Alert when a drive has less than this % free (FR-42).
@@ -127,7 +129,7 @@ async function evaluateFor(ctx: MutationCtx, device: Doc<"devices">, userId: Id<
       .filter((q) => q.eq(q.field("userId"), userId))
       .first();
     if (recent) continue;
-    await ctx.db.insert("alerts", {
+    const alertId = await ctx.db.insert("alerts", {
       userId,
       deviceId: device._id,
       type: b.type,
@@ -136,6 +138,7 @@ async function evaluateFor(ctx: MutationCtx, device: Doc<"devices">, userId: Id<
       createdAt: now,
       pushed: false,
     });
+    await ctx.scheduler.runAfter(0, internal.fcm.dispatchAlertPush, { alertId });
     raised++;
   }
 
@@ -149,7 +152,7 @@ async function evaluateFor(ctx: MutationCtx, device: Doc<"devices">, userId: Id<
       .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
     if (recent.some((a) => a.drive === d.drive)) continue;
-    await ctx.db.insert("alerts", {
+    const alertId = await ctx.db.insert("alerts", {
       userId,
       deviceId: device._id,
       type: "disk",
@@ -159,7 +162,71 @@ async function evaluateFor(ctx: MutationCtx, device: Doc<"devices">, userId: Id<
       createdAt: now,
       pushed: false,
     });
+    await ctx.scheduler.runAfter(0, internal.fcm.dispatchAlertPush, { alertId });
     raised++;
   }
   return raised;
 }
+
+export const getAlertPushDetails = internalQuery({
+  args: { alertId: v.id("alerts") },
+  handler: async (ctx, args) => {
+    const alert = await ctx.db.get(args.alertId);
+    if (!alert) return null;
+    const device = await ctx.db.get(alert.deviceId);
+    const tokens = await ctx.db
+      .query("pushTokens")
+      .withIndex("by_user", (q) => q.eq("userId", alert.userId))
+      .collect();
+    return {
+      alert,
+      deviceName: device?.name ?? "PC",
+      tokens: tokens.map((t) => t.fcmToken),
+    };
+  },
+});
+
+export const getUserPushTokens = internalQuery({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.sessionToken);
+    const tokens = await ctx.db
+      .query("pushTokens")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    return {
+      userId: user._id,
+      tokens: tokens.map((t) => t.fcmToken),
+    };
+  },
+});
+
+export const getAllPushTokens = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const tokens = await ctx.db.query("pushTokens").collect();
+    return tokens.map((t) => ({ userId: t.userId, fcmToken: t.fcmToken, phoneModel: t.phoneModel }));
+  },
+});
+
+export const markAlertPushed = internalMutation({
+  args: { alertId: v.id("alerts") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.alertId, { pushed: true });
+  },
+});
+
+export const removeInvalidPushToken = internalMutation({
+  args: { fcmToken: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("pushTokens")
+      .withIndex("by_token", (q) => q.eq("fcmToken", args.fcmToken))
+      .first();
+    if (row) {
+      await ctx.db.delete(row._id);
+    }
+  },
+});
+
+

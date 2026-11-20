@@ -97,6 +97,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
           & $iscc /Q installer/vitals-uninstall.iss
           if ($LASTEXITCODE -ne 0) { throw "uninstaller build failed" }
+          Copy-Item dist/vitals-setup-*.exe dist/vitals-setup.exe
           Copy-Item agent/target/release/vitals.exe dist/vitals.exe
           # The same binary under its pre-rename name: Nexus agents (<= 0.2.5) only auto-update
           # from nexus.exe, so this is how they get Vitals. Keep it until no Nexus agents remain.
