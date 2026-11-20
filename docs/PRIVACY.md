@@ -84,9 +84,10 @@ Vitals does **not** collect: keystrokes or clipboard contents; screenshots, scre
 The agent keeps its configuration (including its secret key) and log files on your computer. They are not sent to us.
 
 ### 3.7 Visiting the Vitals website
-The website at vitals.dpdns.org has no account, forms, cookies, analytics or advertising. When you visit it:
+The website at vitals.dpdns.org has no account, forms, cookies or advertising. When you visit it:
 
 - **Vercel** serves the page and, like any web host, receives your IP address, browser details and the pages you request, which it keeps in short-lived request logs.
+- **Vercel Web Analytics** counts page views so we can see how many people visit. It records the page, the referring site, your country, and your browser, operating system and device type. It sets no cookies and does not identify you: visits are grouped using a hash of the request that resets every day, and no IP address is stored.
 - **jsDelivr** serves the open-source 3D graphics library the page uses, and receives the same kind of request information.
 - **GitHub** receives a request from your browser when you open the download window (to look up the newest release) and when you download a file.
 - If you turn on the optional ambient sound, your browser remembers that choice in its own `localStorage`. It is never sent to us.
@@ -114,7 +115,7 @@ Vitals is only for people **aged 18 or older**. You must confirm you are 18+ whe
 |---|---|---|---|
 | **Convex, Inc.** | Database, backend functions, real-time sync | All account, security and device data in Section 3.1–3.3 | United States (hosted on Amazon Web Services) |
 | **Cloudflare, Inc.** | Hosts the web dashboard (Cloudflare Pages), CDN, DDoS protection, DNS for vitals.dpdns.org, and forwards mail sent to contact@vitals.dpdns.org to our inbox (Email Routing) | IP address, browser details and request logs when you load the dashboard; sender, recipient and content of emails you send to our contact address | Global network |
-| **Vercel Inc.** | Hosts the Vitals website (vitals.dpdns.org) | IP address, browser details and request logs when you visit the website | United States and global network |
+| **Vercel Inc.** | Hosts the Vitals website (vitals.dpdns.org) and counts its page views (Vercel Web Analytics) | IP address, browser details and request logs when you visit the website; cookieless page-view statistics (Section 3.7) | United States and global network |
 | **jsDelivr** (open-source CDN) | Delivers the 3D graphics library used by the website | IP address and browser details when the website loads | Global network |
 | **GitHub, Inc.** | Hosts the source code and the release downloads; the website asks its API for the newest release | IP address and browser details when you open the download window or download a file | United States |
 | **Google LLC (Firebase)** | Push notifications (FCM) and Google Analytics for Firebase in the Android app | FCM token and the analytics data in Section 3.4 | United States and global |

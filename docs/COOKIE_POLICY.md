@@ -23,7 +23,7 @@ Because the dashboard only uses storage that is strictly necessary to provide th
 
 ## 1a. Website (vitals.dpdns.org)
 
-The Vitals website **sets no cookies** and contains **no advertising, analytics or tracking scripts**.
+The Vitals website **sets no cookies** and contains **no advertising or tracking scripts**. It uses Vercel Web Analytics to count page views, which works without cookies or any other stored identifier (see Privacy Policy Section 3.7).
 
 If you turn on the optional ambient sound, it stores one item in your browser's `localStorage`:
 
