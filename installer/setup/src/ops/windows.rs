@@ -1,4 +1,4 @@
-//! What the installer does to the computer: a port of installer/vitals.iss (Inno Setup) to Rust.
+//! What the installer does to the computer: a port of the former Inno Setup installer to Rust.
 //!
 //! A run (install, update, repair, settings, remove) is a list of steps. Every step can be run
 //! again safely, so "Try again" on the page simply re-runs the step that failed and carries on.

@@ -3,7 +3,7 @@
 
 /// The agent config after install. Keeps everything already there (above all `device_secret`,
 /// which keeps the computer paired), points it at this build's backend and sets `auto_update`.
-/// Port of WriteConfig in installer/vitals.iss.
+/// Port of WriteConfig from the former Inno Setup installer.
 pub fn config_toml(existing: Option<&str>, convex_url: &str, auto_update: bool) -> String {
     let url_line = format!("convex_url = \"{convex_url}\"");
     let update_line = format!("auto_update = {auto_update}");

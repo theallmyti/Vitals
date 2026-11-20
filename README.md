@@ -376,7 +376,7 @@ cargo run -- pair     # run interactive pairing flow
 
 One tag ships Windows, Linux and Android, and installed copies update themselves:
 
-1. Set the same version in `agent/Cargo.toml`, `installer/vitals.iss` (`AppVersion`) and
+1. Set the same version in `agent/Cargo.toml`, `installer/setup/Cargo.toml` and
    `android/app/build.gradle.kts` (`versionName`; `versionCode` follows it). Commit.
 2. If the release adds or changes a Convex function, deploy the backend first: `cd convex && npx convex deploy`.
 3. `git tag v<version> && git push origin v<version>`.
