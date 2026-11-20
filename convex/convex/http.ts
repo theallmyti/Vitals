@@ -1,18 +1,34 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { TURNSTILE_SITEKEY } from "./turnstile";
+import { api } from "./_generated/api";
+import { APK_URL_PREFIX } from "./releases";
 
 const http = httpRouter();
 
 export const GITHUB_RELEASES_URL = "https://github.com/theallmyti/Vitals/releases/latest";
 
-export async function handlePair(request: Request): Promise<Response> {
+/// Where "no app yet" goes: the APK file of the latest published release when there is one (a
+/// direct download), else the releases page. Only this repo's release files are accepted.
+export function apkDownloadUrl(apkUrl: string | null | undefined): string {
+  if (apkUrl && apkUrl.startsWith(APK_URL_PREFIX) && apkUrl.endsWith(".apk") && !/["'<>\s]/.test(apkUrl)) {
+    return apkUrl;
+  }
+  return GITHUB_RELEASES_URL;
+}
+
+/// The page the pairing QR code opens (`https://<deployment>.convex.site/pair?code=ABC234`).
+/// On Android, Chrome's intent link opens the Vitals app when it is installed and otherwise goes
+/// straight to `download` (S.browser_fallback_url), so a phone without the app downloads the APK.
+export async function handlePair(request: Request, apkUrl?: string | null): Promise<Response> {
   const url = new URL(request.url);
   const code = (url.searchParams.get("code") ?? "").toUpperCase().replace(/[^23456789ABCDEFGHJKLMNPQRSTUVWXYZ]/g, "");
   const formattedCode = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
-  // Still the pre-rename scheme: every installed app version handles nexus://, only Vitals builds
-  // handle vitals://. Switch once the Vitals app is what people have installed.
-  const deepLink = `nexus://pair?code=${encodeURIComponent(code)}`;
+  const download = apkDownloadUrl(apkUrl);
+  // The Vitals app (1.0.0+) handles vitals://pair. Matched by scheme, not package name, so any
+  // build of the app (release or debug id) counts as installed.
+  const deepLink = `vitals://pair?code=${encodeURIComponent(code)}`;
+  const intentLink = `intent://pair?code=${encodeURIComponent(code)}#Intent;scheme=vitals;S.browser_fallback_url=${encodeURIComponent(download)};end`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -155,12 +171,12 @@ export async function handlePair(request: Request): Promise<Response> {
     </div>
 
     <a href="${deepLink}" class="btn btn-primary" id="openAppBtn">Open in Vitals App</a>
-    <a href="${GITHUB_RELEASES_URL}" class="btn btn-secondary" target="_blank" rel="noopener">Download Vitals Android APK</a>
+    <a href="${download}" class="btn btn-secondary" rel="noopener">Download Vitals Android APK</a>
 
     <div class="steps">
       <h3>Don't have the app yet?</h3>
       <ol>
-        <li>Tap <strong>Download Vitals Android APK</strong> to get the latest release from GitHub.</li>
+        <li>Tap <strong>Download Vitals Android APK</strong> (it downloads straight away).</li>
         <li>Install the APK and open <strong>Vitals</strong>.</li>
         <li>Sign in, tap <strong>Pair Device</strong>, and enter code <strong>${formattedCode || "above"}</strong>.</li>
       </ol>
@@ -168,10 +184,13 @@ export async function handlePair(request: Request): Promise<Response> {
   </div>
 
   <script>
-    // Automatically attempt deep link if a code is present
+    // Android: open the app, or download the APK when it is not installed (one intent link does
+    // both). Elsewhere, try the app link and leave the page with its buttons.
     const code = "${code}";
+    const android = /Android/i.test(navigator.userAgent);
+    if (android) document.getElementById("openAppBtn").href = "${intentLink}";
     if (code) {
-      window.location.href = "${deepLink}";
+      window.location.replace(android ? "${intentLink}" : "${deepLink}");
     }
   </script>
 </body>
@@ -261,7 +280,10 @@ http.route({
 http.route({
   path: "/pair",
   method: "GET",
-  handler: httpAction(async (_ctx, request) => handlePair(request)),
+  handler: httpAction(async (ctx, request) => {
+    const release = await ctx.runQuery(api.releases.latest, {});
+    return handlePair(request, release.apkUrl);
+  }),
 });
 
 export default http;

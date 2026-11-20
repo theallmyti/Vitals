@@ -1,0 +1,37 @@
+[package]
+name = "vitals-setup"
+version = "1.1.0"
+edition = "2024"
+
+[lib]
+name = "vitals_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vitals-setup"
+path = "src/main.rs"
+# The window code has no tests; its test runner would be named vitals_setup-*.exe and Windows
+# would demand admin rights to run it. Tests live in the library.
+test = false
+
+[dependencies]
+mslnk = "0.1.8"
+rfd = "0.18.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tao = "0.37.2"
+winreg = "0.56.0"
+wry = "0.57.2"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Graphics_Dwm", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
+[build-dependencies]
+embed-resource = "3.0.12"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

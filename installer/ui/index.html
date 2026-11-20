@@ -1,0 +1,984 @@
+<title>Vitals Setup Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<style>
+/* Layout: a 720x480 borderless installer window on a dark "desktop", prototype controls around it.
+   One look on purpose: the installer always uses the Vitals app's navy/arcade palette. */
+:root {
+  color-scheme: dark;
+  --desk: #0a1220;
+  --navy: #0F1B2E;
+  --navy-2: #162640;
+  --navy-3: #1E3454;
+  --line: #2B4468;
+  --yellow: #F5C542;
+  --yellow-dark: #D4A830;
+  --green: #4CAF50;
+  --green-light: #81C784;
+  --cream: #FDF6E3;
+  --cream-2: #F5ECD0;
+  --brown: #8B7355;
+  --ink: #3E2F1C;
+  --ink-2: #6B5B45;
+  --text: #E8EEF7;
+  --muted: #9FB0C8;
+  --red: #EF5350;
+  --cyan: #26C6DA;
+  --pixel: "Press Start 2P", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  background: var(--desk);
+  color: var(--text);
+  font-family: var(--ui);
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+
+/* ---------- prototype controls (not part of the installer) ---------- */
+.proto { max-width: 720px; margin: 0 auto; display: grid; gap: 14px; }
+.proto-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.proto-head h1 { font: 12px/1.6 var(--pixel); color: var(--yellow); margin: 0; letter-spacing: .5px; }
+.proto-head p { margin: 0; color: var(--muted); font-size: 13px; }
+.bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bar-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-right: 4px; }
+.chip {
+  border: 1px solid var(--line); background: var(--navy); border-radius: 6px;
+  padding: 6px 10px; font-size: 12.5px; cursor: pointer; color: var(--text);
+}
+.chip[aria-pressed="true"] { border-color: var(--yellow); color: var(--yellow); background: var(--navy-2); }
+.chip:disabled { opacity: .35; cursor: not-allowed; }
+.chip.scan { border-color: var(--green); color: var(--green-light); }
+
+/* ---------- the window ---------- */
+.fit { width: 100%; max-width: 720px; margin: 0 auto; position: relative; overflow: hidden; padding: 0; }
+.win {
+  width: 720px; height: 480px; transform-origin: top left;
+  background: var(--navy); border: 2px solid var(--line); border-radius: 12px; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.4);
+  display: grid; grid-template-rows: 40px 1fr; position: relative;
+}
+.titlebar {
+  display: flex; align-items: center; gap: 10px; padding: 0 6px 0 14px;
+  background: var(--navy-2); border-bottom: 2px solid var(--line); user-select: none;
+}
+.titlebar .brand { font: 10px/1 var(--pixel); color: var(--yellow); letter-spacing: 1px; }
+.titlebar .ver { font-size: 11px; color: var(--muted); }
+.titlebar .spacer { flex: 1; }
+.tb-btn {
+  width: 34px; height: 28px; border: 0; background: transparent; border-radius: 6px; cursor: pointer;
+  display: grid; place-items: center; color: var(--muted);
+}
+.tb-btn:hover { background: var(--navy-3); color: var(--text); }
+.tb-btn.close:hover { background: var(--red); color: #fff; }
+.tb-btn svg { width: 14px; height: 14px; shape-rendering: crispEdges; }
+
+.body { display: grid; grid-template-columns: 230px 1fr; min-height: 0; position: relative; }
+.art {
+  background: var(--navy-2); border-right: 2px solid var(--line);
+  display: grid; place-items: center; position: relative; overflow: hidden;
+}
+.art::before { /* faint pixel grid floor */
+  content: ""; position: absolute; inset: 0;
+  background-image: linear-gradient(var(--navy-3) 1px, transparent 1px), linear-gradient(90deg, var(--navy-3) 1px, transparent 1px);
+  background-size: 12px 12px; opacity: .35;
+}
+.art canvas { position: relative; image-rendering: pixelated; }
+#qr {
+  /* Size is set by drawPairQR (whole pixels per module, at most 190 px), so with its 8 px frame it
+     fits the 228 px column with equal margins (at most 190 + 16). */
+  display: none; background: var(--cream); border: 8px solid var(--cream); border-radius: 8px; cursor: pointer;
+  box-sizing: content-box; margin-bottom: 18px; /* room for the caption below */
+  box-shadow: 0 0 0 2px var(--brown);
+  image-rendering: auto;
+}
+.art.show-qr #pc { display: none; }
+.art.show-qr #qr { display: block; }
+.art-caption {
+  position: absolute; bottom: 16px; left: 0; right: 0; text-align: center;
+  font: 8px/1.6 var(--pixel); color: var(--muted); letter-spacing: .5px;
+}
+
+.content { padding: 30px 32px 26px; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.screen { display: none; flex-direction: column; gap: 14px; height: 100%; }
+.screen.on { display: flex; animation: enter .28s steps(4) both; }
+@keyframes enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.h { font: 17px/1.5 var(--pixel); color: var(--yellow); margin: 0; letter-spacing: .5px; text-wrap: balance; }
+.lead { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; max-width: 44ch; }
+.grow { flex: 1; }
+.row { display: flex; gap: 10px; align-items: center; }
+.row.end { justify-content: flex-end; }
+
+/* buttons */
+.btn {
+  font: 10px/1 var(--pixel); letter-spacing: .5px; cursor: pointer; border-radius: 6px;
+  padding: 12px 18px; border: 2px solid var(--ink); background: var(--yellow); color: var(--ink);
+  box-shadow: 0 4px 0 var(--yellow-dark); transition: transform .05s;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--yellow-dark); }
+.btn.ghost { background: transparent; color: var(--text); border-color: var(--line); box-shadow: 0 4px 0 var(--navy-3); }
+.btn.danger { background: var(--red); color: #fff; border-color: #7a1f1d; box-shadow: 0 4px 0 #a33532; }
+.link { background: none; border: 0; padding: 0; color: var(--yellow); text-decoration: underline; cursor: pointer; font-size: 13px; }
+
+/* terms checkbox */
+.agree {
+  display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 10px;
+  background: var(--navy-2); border: 2px solid var(--line); cursor: pointer; font-size: 13.5px; line-height: 1.5;
+}
+.agree.ok { border-color: var(--green); }
+.agree input { position: absolute; opacity: 0; pointer-events: none; }
+.box {
+  flex: none; width: 20px; height: 20px; margin-top: 1px; border: 2px solid var(--cream-2); border-radius: 3px;
+  display: grid; place-items: center; background: var(--navy);
+}
+.box svg { width: 12px; height: 12px; visibility: hidden; shape-rendering: crispEdges; }
+.agree input:checked + .box { background: var(--green); border-color: var(--green); }
+.agree input:checked + .box svg { visibility: visible; }
+.agree input:focus-visible + .box { outline: 2px solid var(--yellow); outline-offset: 2px; }
+.agree a { color: var(--yellow); }
+
+/* quick / custom cards */
+.paths { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.path {
+  text-align: left; cursor: pointer; border-radius: 10px; padding: 14px; position: relative;
+  background: var(--cream); border: 2px solid var(--brown); color: var(--ink);
+  display: grid; gap: 8px; align-content: start; box-shadow: 0 4px 0 var(--brown);
+  transition: transform .08s, box-shadow .08s, opacity .2s;
+}
+.path:hover:not([aria-disabled="true"]) { transform: translateY(-2px); box-shadow: 0 6px 0 var(--brown); }
+.path:active:not([aria-disabled="true"]) { transform: translateY(2px); box-shadow: 0 2px 0 var(--brown); }
+.path[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.path .t { font: 11px/1.4 var(--pixel); }
+.path .d { font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+.badge {
+  justify-self: start; font: 7px/1 var(--pixel); letter-spacing: .5px; padding: 5px 6px; border-radius: 4px;
+  background: var(--green); color: #fff;
+}
+.hint { font-size: 12px; color: var(--muted); min-height: 1.2em; margin: 0; }
+
+/* custom settings */
+.settings { display: grid; gap: 2px; background: var(--line); border: 2px solid var(--line); border-radius: 10px; overflow: hidden; }
+.set { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--navy-2); }
+.set .lbl { flex: 1; min-width: 0; }
+.set .lbl b { display: block; font-weight: 600; font-size: 13.5px; }
+.set .lbl span { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.folder { font-family: "Cascadia Mono", Consolas, monospace; }
+.switch {
+  flex: none; width: 44px; height: 22px; border-radius: 4px; border: 2px solid var(--line); background: var(--navy);
+  position: relative; cursor: pointer; padding: 0;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 2px;
+  background: var(--muted); transition: left .12s steps(3);
+}
+.switch[aria-checked="true"] { background: var(--green); border-color: var(--green); }
+.switch[aria-checked="true"]::after { left: 24px; background: #fff; }
+.mini { font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--navy); cursor: pointer; }
+
+/* install progress */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.steps li { display: flex; gap: 12px; align-items: center; font-size: 14px; color: var(--muted); }
+.steps li.active { color: var(--text); }
+.steps li.done { color: var(--text); }
+.steps li.fail { color: var(--red); }
+.st { flex: none; width: 18px; height: 18px; border: 2px solid var(--line); border-radius: 3px; display: grid; place-items: center; }
+.steps li.active .st { border-color: var(--yellow); background: var(--yellow); animation: blink .5s steps(2) infinite; }
+.steps li.done .st { border-color: var(--green); background: var(--green); }
+.steps li.skip .st { border-style: dashed; }
+.steps li.fail .st { border-color: var(--red); background: var(--red); }
+.st svg { width: 10px; height: 10px; display: none; shape-rendering: crispEdges; }
+.steps li.done .st .ok, .steps li.fail .st .x { display: block; }
+.steps .note { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+@keyframes blink { 50% { opacity: .35; } }
+.meter { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; padding: 4px; border: 2px solid var(--line); border-radius: 6px; background: var(--navy); }
+.meter i { height: 14px; background: var(--navy-3); border-radius: 1px; }
+.meter i.on { background: var(--green); box-shadow: inset 0 -3px 0 rgba(0,0,0,.25); }
+.meter.fail i.on { background: var(--red); }
+.pct { font: 9px/1 var(--pixel); color: var(--muted); text-align: right; }
+.tip {
+  display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 8px;
+  background: var(--cream); border: 2px solid var(--brown); color: var(--ink); font-size: 12.5px; line-height: 1.45;
+}
+.tip b { font: 8px/1 var(--pixel); color: var(--green); flex: none; }
+.tip span { transition: opacity .25s; }
+.err {
+  display: none; gap: 8px; padding: 12px 14px; border-radius: 8px; border: 2px solid var(--red); background: rgba(239,83,80,.08);
+  font-size: 13px; line-height: 1.5;
+}
+.err.on { display: grid; }
+.err code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--muted); }
+
+/* pairing */
+.code { font: 22px/1 var(--pixel); color: var(--text); letter-spacing: 4px; }
+.how { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: s; }
+.how li { counter-increment: s; display: flex; gap: 10px; align-items: baseline; font-size: 13.5px; }
+.how li::before { content: counter(s); font: 9px/1 var(--pixel); color: var(--navy); background: var(--yellow); padding: 4px 5px; border-radius: 3px; }
+/* One line, always: the dots animate inside a fixed 3-character box, so the text never changes width
+   (it used to wrap to two lines every time the third dot appeared). */
+.expires { margin-top: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.4em; }
+.wait { font: 9px/1.6 var(--pixel); color: var(--green-light); white-space: nowrap; flex: none; }
+.wait::after { content: ""; display: inline-block; width: 3ch; text-align: left; animation: dots 1.2s steps(4) infinite; }
+.pair-foot { align-items: center; }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+/* manage */
+.choices { display: grid; gap: 10px; }
+.choice {
+  display: flex; gap: 14px; align-items: center; text-align: left; cursor: pointer; padding: 12px 14px; border-radius: 10px;
+  background: var(--cream); border: 2px solid var(--brown); color: var(--ink); box-shadow: 0 3px 0 var(--brown);
+}
+.choice:hover { transform: translateY(-1px); }
+.choice .ico { flex: none; width: 34px; height: 34px; border-radius: 6px; background: var(--navy); border: 2px solid var(--green); display: grid; place-items: center; }
+.choice.bad .ico { border-color: var(--red); }
+.choice .ico svg { width: 18px; height: 18px; shape-rendering: crispEdges; }
+.choice b { display: block; font: 10px/1.5 var(--pixel); }
+.choice span { font-size: 12.5px; color: var(--ink-2); }
+
+/* overlays */
+#confetti { position: absolute; inset: 0; pointer-events: none; image-rendering: pixelated; }
+.dialog {
+  position: absolute; inset: 40px 0 0; background: rgba(10,18,32,.78); display: none; place-items: center; z-index: 5;
+}
+.dialog.on { display: grid; }
+.dialog .card {
+  width: 380px; display: grid; gap: 12px; padding: 20px; border-radius: 10px; background: var(--navy-2); border: 2px solid var(--line);
+}
+.dialog .card .h { font-size: 12px; }
+.dialog .card p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 10px 14px; border-radius: 8px;
+  background: var(--cream); color: var(--ink); border: 2px solid var(--brown); font-size: 13px; z-index: 20;
+  opacity: 0; pointer-events: none; transition: opacity .2s; max-width: calc(100% - 32px);
+}
+.toast.on { opacity: 1; }
+
+.board { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.notes { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+
+/* Inside the real installer (html.real): only the window, filling the native borderless frame. */
+html.real, html.real body { height: 100%; overflow: hidden; }
+html.real body { padding: 0; background: var(--navy); }
+html.real .proto { max-width: none; display: block; height: 100%; }
+html.real .proto > :not(.fit) { display: none; }
+html.real .fit { max-width: none; height: 100% !important; overflow: hidden !important; }
+html.real .win { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; transform: none !important; }
+html.real .titlebar { cursor: default; }
+html.real .toast { bottom: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen.on { animation: none; }
+  .steps li.active .st, .wait::after { animation: none; }
+}
+</style>
+
+<div class="proto">
+  <div class="proto-head">
+    <h1>VITALS SETUP · PROTOTYPE</h1>
+    <p>Click through it like the real installer. Sounds play after your first click.</p>
+  </div>
+
+  <div class="bar" role="group" aria-label="Scenario">
+    <span class="bar-label">Start as</span>
+    <button class="chip" data-scenario="new" aria-pressed="true">New install</button>
+    <button class="chip" data-scenario="update" aria-pressed="false">Older version installed</button>
+    <button class="chip" data-scenario="same" aria-pressed="false">Same version installed</button>
+    <button class="chip" data-scenario="remove" aria-pressed="false">Uninstaller</button>
+    <button class="chip" data-scenario="error" aria-pressed="false">Install hits an error</button>
+  </div>
+
+  <div class="fit" id="fit">
+    <div class="win" id="win" role="application" aria-label="Vitals Setup window">
+      <div class="titlebar">
+        <span class="brand">VITALS</span>
+        <span class="ver" id="ver">Setup 1.0.1</span>
+        <span class="spacer"></span>
+        <button class="tb-btn" id="mute" title="Sound on" aria-label="Turn sound off">
+          <svg viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><path id="spk" d="M1 5h3l4-3v10L4 9H1z M10 4h1v6h-1z M12 2h1v10h-1z"/></svg>
+        </button>
+        <button class="tb-btn" id="min" title="Minimize" aria-label="Minimize">
+          <svg viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><path d="M2 10h10v2H2z"/></svg>
+        </button>
+        <button class="tb-btn close" id="close" title="Close" aria-label="Close">
+          <svg viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><path d="M2 2h2v2H2zM4 4h2v2H4zM6 6h2v2H6zM8 4h2v2H8zM10 2h2v2h-2zM4 8h2v2H4zM2 10h2v2H2zM8 8h2v2H8zM10 10h2v2h-2z"/></svg>
+        </button>
+      </div>
+
+      <div class="body">
+        <div class="art" id="art">
+          <canvas id="pc" width="192" height="156" aria-hidden="true"></canvas>
+          <canvas id="qr" width="174" height="174" role="img" aria-label="Pairing QR code (example)"></canvas>
+          <div class="art-caption" id="caption">THIS PC</div>
+        </div>
+
+        <div class="content">
+          <!-- 1. Welcome: terms + Quick / Custom -->
+          <section class="screen on" id="s-welcome" aria-labelledby="h-welcome">
+            <h2 class="h" id="h-welcome">LET'S POWER UP!</h2>
+            <p class="lead">Vitals shows this PC's temperatures, load and health live on your phone.</p>
+            <label class="agree" id="agree-wrap">
+              <input type="checkbox" id="agree">
+              <span class="box"><svg viewBox="0 0 12 12" fill="#fff" aria-hidden="true"><path d="M1 6h2v2H1zM3 8h2v2H3zM5 6h2v2H5zM7 4h2v2H7zM9 2h2v2H9z"/></svg></span>
+              <span>I'm 18 or older, this is my PC (or I'm allowed to monitor it), and I agree to the
+                <a href="https://github.com/theallmyti/Vitals/blob/main/docs/TERMS.md" target="_blank" rel="noopener">Terms of Service</a> and
+                <a href="https://github.com/theallmyti/Vitals/blob/main/docs/PRIVACY.md" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+            </label>
+            <div class="paths">
+              <button class="path" id="quick" aria-disabled="true">
+                <span class="badge">RECOMMENDED</span>
+                <span class="t">QUICK</span>
+                <span class="d">Install with the usual settings and pair your phone.</span>
+              </button>
+              <button class="path" id="custom" aria-disabled="true">
+                <span class="badge" style="visibility:hidden">·</span>
+                <span class="t">CUSTOM</span>
+                <span class="d">Choose the folder, startup, updates and sensors.</span>
+              </button>
+            </div>
+            <p class="hint" id="agree-hint" aria-live="polite">Tick the box to continue.</p>
+          </section>
+
+          <!-- 2. Custom settings -->
+          <section class="screen" id="s-custom" aria-labelledby="h-custom">
+            <h2 class="h" id="h-custom">CUSTOM SETUP</h2>
+            <div class="settings">
+              <div class="set">
+                <div class="lbl"><b>Install folder</b><span class="folder" id="folder">C:\Program Files\Vitals</span></div>
+                <button class="mini" id="change-folder">Change…</button>
+              </div>
+              <div class="set">
+                <div class="lbl"><b>Start with Windows</b><span>Shows the Vitals icon in the taskbar tray when you sign in.</span></div>
+                <button class="switch" role="switch" aria-checked="true" data-opt="startup" aria-label="Start with Windows"></button>
+              </div>
+              <div class="set">
+                <div class="lbl"><b>Automatic updates</b><span>Installs new versions by itself, usually within a minute.</span></div>
+                <button class="switch" role="switch" aria-checked="true" data-opt="autoupdate" aria-label="Automatic updates"></button>
+              </div>
+              <div class="set">
+                <div class="lbl"><b>Sensor driver (PawnIO)</b><span>Needed for CPU temperature and fan speeds.</span></div>
+                <button class="switch" role="switch" aria-checked="true" data-opt="driver" aria-label="Sensor driver"></button>
+              </div>
+              <div class="set">
+                <div class="lbl"><b>Desktop shortcut</b><span>Adds a Vitals icon to the desktop.</span></div>
+                <button class="switch" role="switch" aria-checked="false" data-opt="shortcut" aria-label="Desktop shortcut"></button>
+              </div>
+            </div>
+            <div class="grow"></div>
+            <div class="row end">
+              <button class="btn ghost" id="custom-back">BACK</button>
+              <button class="btn" id="custom-go">INSTALL</button>
+            </div>
+          </section>
+
+          <!-- 3. Installing / updating / removing (one screen, different lists) -->
+          <section class="screen" id="s-run" aria-labelledby="h-run">
+            <h2 class="h" id="h-run">BOOTING UP...</h2>
+            <ul class="steps" id="steps" aria-live="polite"></ul>
+            <div>
+              <div class="meter" id="meter" aria-hidden="true"></div>
+            </div>
+            <div class="pct" id="pct">0%</div>
+            <div class="err" id="err" role="alert">
+              <div><b id="err-what">Couldn't start the Vitals service.</b> This is usually fixed by trying again.</div>
+              <code id="err-detail">Error 1053 · VitalsAgent · C:\Program Files\Vitals\vitals.exe</code>
+              <div class="row"><button class="btn" id="retry">TRY AGAIN</button><button class="mini" id="copy-err">Copy details</button></div>
+            </div>
+            <div class="grow"></div>
+            <div class="tip" id="tip"><b>TIP</b><span id="tip-text"></span></div>
+          </section>
+
+          <!-- 4. Pair -->
+          <section class="screen" id="s-pair" aria-labelledby="h-pair">
+            <h2 class="h" id="h-pair">LINK YOUR PHONE</h2>
+            <p class="lead">Vitals is installed and running. Now connect it to your phone.</p>
+            <ol class="how">
+              <li>Scan the code with your phone's camera or Google Lens.</li>
+              <li>Vitals opens. No app yet? It downloads instead.</li>
+              <li>Confirm the pairing in the app.</li>
+            </ol>
+            <div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Or type this code in the app:</div>
+              <div class="code" id="pair-code">K7Q M2D</div>
+              <div class="expires" id="pair-left">New code in 9:58</div>
+            </div>
+            <div class="grow"></div>
+            <div class="row pair-foot">
+              <span class="wait">WAITING FOR YOUR PHONE</span>
+            </div>
+          </section>
+
+          <!-- 5. Paired! -->
+          <section class="screen" id="s-paired" aria-labelledby="h-paired">
+            <h2 class="h" id="h-paired" style="color:var(--green-light)">PLAYER 2 CONNECTED!</h2>
+            <p class="lead">This PC is now linked to your phone. Open Vitals on your phone to see it live.</p>
+            <div class="tip"><b>NEXT</b><span>Vitals keeps running in the background and updates itself. You can close this window.</span></div>
+            <div class="grow"></div>
+            <div class="row end"><button class="btn" id="finish">FINISH</button></div>
+          </section>
+
+          <!-- 6. Update available (older version installed) -->
+          <section class="screen" id="s-update" aria-labelledby="h-update">
+            <h2 class="h" id="h-update">NEW VERSION!</h2>
+            <p class="lead">Vitals <b style="color:var(--text)" id="upd-from">1.0.0</b> is on this PC. Update to <b style="color:var(--text)" class="this-version">1.0.1</b>? Your settings and phone pairing stay as they are.</p>
+            <div class="tip"><b>NEW</b><span>One-line install for Linux and Windows, and an install guide inside the phone app.</span></div>
+            <div class="grow"></div>
+            <div class="row end">
+              <button class="btn ghost" id="update-later">NOT NOW</button>
+              <button class="btn" id="update-go">UPDATE</button>
+            </div>
+          </section>
+
+          <!-- 7. Done (updated / repaired / settings saved) -->
+          <section class="screen" id="s-done" aria-labelledby="h-done">
+            <h2 class="h" id="h-done">ALL UP TO DATE</h2>
+            <p class="lead" id="done-text">Vitals 1.0.1 is installed and running.</p>
+            <div class="grow"></div>
+            <div class="row end"><button class="btn" id="done-close">CLOSE</button></div>
+          </section>
+
+          <!-- 8. Manage (same version installed) -->
+          <section class="screen" id="s-manage" aria-labelledby="h-manage">
+            <h2 class="h" id="h-manage">VITALS IS INSTALLED</h2>
+            <p class="lead">Version <span id="manage-ver">1.0.1</span> is already on this PC. What would you like to do?</p>
+            <div class="choices">
+              <button class="choice" id="m-repair">
+                <span class="ico"><svg viewBox="0 0 18 18" fill="#4CAF50" aria-hidden="true"><path d="M11 2h4v2h-2v2h2v2h-4V6h-2V4h2zM8 8h2v2H8zM6 10h2v2H6zM4 12h2v2H4zM2 14h2v2H2z"/></svg></span>
+                <span><b>REPAIR</b><span>Reinstall the files and restart the service. Pairing is kept.</span></span>
+              </button>
+              <button class="choice" id="m-settings">
+                <span class="ico"><svg viewBox="0 0 18 18" fill="#4CAF50" aria-hidden="true"><path d="M2 3h14v2H2zM10 1h2v6h-2zM2 8h14v2H2zM4 6h2v6H4zM2 13h14v2H2zM12 11h2v6h-2z"/></svg></span>
+                <span><b>CHANGE SETTINGS</b><span>Startup, automatic updates, sensors and shortcut.</span></span>
+              </button>
+              <button class="choice bad" id="m-remove">
+                <span class="ico"><svg viewBox="0 0 18 18" fill="#EF5350" aria-hidden="true"><path d="M5 1h8v2h4v2H1V3h4zM3 6h12v11H3zM6 8v7h2V8zM10 8v7h2V8z"/></svg></span>
+                <span><b>UNINSTALL</b><span>Remove Vitals and unlink this PC from your phone.</span></span>
+              </button>
+            </div>
+          </section>
+
+          <!-- 9. Uninstall confirm -->
+          <section class="screen" id="s-remove" aria-labelledby="h-remove">
+            <h2 class="h" id="h-remove">LEAVING SO SOON?</h2>
+            <p class="lead">Removing Vitals stops monitoring, unlinks this PC from your phone and deletes its files. You can install it again any time.</p>
+            <label class="agree" style="cursor:default">
+              <span style="font-size:12.5px;color:var(--muted)">Will be removed: the Vitals service and tray icon, the sensor driver, and <span class="folder" id="remove-folder">C:\Program Files\Vitals</span>.</span>
+            </label>
+            <div class="grow"></div>
+            <div class="row end">
+              <button class="btn ghost" id="remove-keep">KEEP VITALS</button>
+              <button class="btn danger" id="remove-go">REMOVE</button>
+            </div>
+          </section>
+
+          <!-- 9b. The uninstaller on a PC without Vitals -->
+          <section class="screen" id="s-none" aria-labelledby="h-none">
+            <h2 class="h" id="h-none">NOTHING TO REMOVE</h2>
+            <p class="lead">Vitals isn't installed on this PC, so there's nothing to uninstall.</p>
+            <div class="grow"></div>
+            <div class="row end"><button class="btn" id="none-close">CLOSE</button></div>
+          </section>
+
+          <!-- 10. Removed -->
+          <section class="screen" id="s-removed" aria-labelledby="h-removed">
+            <h2 class="h" id="h-removed">GAME OVER</h2>
+            <p class="lead">Vitals was removed from this PC. Thanks for playing. Come back any time.</p>
+            <div class="grow"></div>
+            <div class="row end"><button class="btn" id="removed-close">CLOSE</button></div>
+          </section>
+        </div>
+        <canvas id="confetti" width="720" height="440" aria-hidden="true"></canvas>
+      </div>
+
+      <div class="dialog" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-h">
+        <div class="card">
+          <h3 class="h" id="dlg-h">QUIT SETUP?</h3>
+          <p id="dlg-p">Vitals isn't fully installed yet.</p>
+          <div class="row end"><button class="btn ghost" id="dlg-stay">KEEP GOING</button><button class="btn danger" id="dlg-quit">QUIT</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">
+    <span class="bar-label">Prototype</span>
+    <button class="chip scan" id="sim-scan" disabled>Simulate phone scan</button>
+  </div>
+
+  <div class="board" role="group" aria-label="Sound board">
+    <span class="bar-label">Sounds</span>
+    <button class="chip" data-sound="click">Click</button>
+    <button class="chip" data-sound="toggle">Toggle</button>
+    <button class="chip" data-sound="start">Install starts</button>
+    <button class="chip" data-sound="tick">Step done</button>
+    <button class="chip" data-sound="complete">Setup complete</button>
+    <button class="chip" data-sound="paired">Paired</button>
+    <button class="chip" data-sound="uninstalled">Uninstalled</button>
+    <button class="chip" data-sound="error">Error</button>
+  </div>
+  <p class="notes">Every sound is made in code (square-wave notes, original melodies), so there's no licence to worry about. The QR code and pairing code here are examples. Inside the real installer, the window can be dragged by its title bar.</p>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="vendor/qrcode.js"></script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+
+  /* Inside the real installer the page talks to the Rust program over IPC (installer/setup);
+     in the browser (the design prototype) everything below is simulated. */
+  const REAL = !!(window.VITALS_REAL && window.ipc);
+  const send = (msg) => { if (REAL) window.ipc.postMessage(JSON.stringify(msg)); };
+  if (REAL) {
+    // Drag the borderless window by its title bar (but not by its buttons).
+    document.querySelector(".titlebar").addEventListener("mousedown", (e) => {
+      if (e.button === 0 && !e.target.closest("button")) send({ cmd: "drag" });
+    });
+    // Web links open in the default browser, never inside the installer window.
+    document.addEventListener("click", (e) => {
+      const a = e.target.closest('a[href^="https://"]');
+      if (a) { e.preventDefault(); send({ cmd: "open", url: a.href }); }
+    });
+  }
+  /** Closes the installer (real) or restarts the prototype scenario (browser). */
+  function closeWindow(note) {
+    if (REAL) { send({ cmd: "close" }); return; }
+    toast(note || "The window closes here.");
+    setTimeout(() => startScenario(scenario), 900);
+  }
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* ---------------- sound ---------------- */
+  const NAMES = ["click", "toggle", "tick", "start", "paired", "complete", "uninstalled", "error"];
+  let ctx = null, buffers = {}, muted = false, loading = null;
+  try { muted = localStorage.getItem("vitals-setup-muted") === "1"; } catch (e) {}
+  function initAudio() {
+    if (loading) return loading;
+    loading = (async () => {
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        await Promise.all(NAMES.map(async (n) => {
+          const r = await fetch("sounds/" + n + ".wav");
+          buffers[n] = await ctx.decodeAudioData(await r.arrayBuffer());
+        }));
+      } catch (e) { console.warn("Sounds unavailable:", e); }
+    })();
+    return loading;
+  }
+  function play(n) {
+    if (muted || !ctx || !buffers[n]) return;
+    if (ctx.state === "suspended") ctx.resume();
+    const s = ctx.createBufferSource(); s.buffer = buffers[n]; s.connect(ctx.destination); s.start();
+  }
+  document.addEventListener("pointerdown", initAudio, { once: true });
+  document.addEventListener("keydown", initAudio, { once: true });
+  function renderMute() {
+    $("#spk").setAttribute("d", muted ? "M1 5h3l4-3v10L4 9H1z M10 5h1v1h-1zM11 6h1v1h-1zM12 7h1v1h-1zM12 5h1v1h-1zM10 8h1v1h-1z" : "M1 5h3l4-3v10L4 9H1z M10 4h1v6h-1z M12 2h1v10h-1z");
+    $("#mute").title = muted ? "Sound off" : "Sound on";
+    $("#mute").setAttribute("aria-label", muted ? "Turn sound on" : "Turn sound off");
+  }
+  $("#mute").addEventListener("click", () => {
+    muted = !muted; renderMute();
+    try { localStorage.setItem("vitals-setup-muted", muted ? "1" : "0"); } catch (e) {}
+    if (!muted) initAudio().then(() => play("toggle"));
+  });
+  renderMute();
+  $$("[data-sound]").forEach((b) => b.addEventListener("click", async () => { await initAudio(); const m = muted; muted = false; play(b.dataset.sound); muted = m; }));
+
+  /* ---------------- the pixel computer ---------------- */
+  const pc = $("#pc"), g = pc.getContext("2d"), P = 6;
+  const C = { out: "#3E2F1C", body: "#F5ECD0", hi: "#FDF6E3", shade: "#D9CBA6", scr: "#0F1B2E", g: "#4CAF50", gl: "#81C784", gd: "#2E6B31", y: "#F5C542", r: "#EF5350", c: "#26C6DA" };
+  const px = (x, y, c) => { g.fillStyle = c; g.fillRect(x * P, y * P, P, P); };
+  const rect = (x0, y0, x1, y1, c) => { g.fillStyle = c; g.fillRect(x0 * P, y0 * P, (x1 - x0 + 1) * P, (y1 - y0 + 1) * P); };
+  let mode = "idle", bootP = 0, frame = 0;
+  const BEAT = [0,0,0,0,0,0,0,-1,0,-4,3,-1,0,0,0,0,0,0,0,0];
+  const LINES = [14, 9, 17, 6, 12, 18, 8, 15, 11, 16];
+  function drawPC() {
+    g.clearRect(0, 0, pc.width, pc.height);
+    rect(2, 1, 29, 19, C.out); rect(3, 2, 28, 18, C.body); rect(3, 2, 28, 2, C.hi); rect(3, 18, 28, 18, C.shade);
+    rect(5, 4, 26, 15, C.out); rect(6, 5, 25, 14, C.scr);
+    for (let x = 5; x <= 11; x += 2) px(x, 17, C.shade);
+    rect(13, 20, 18, 21, C.out); rect(14, 20, 17, 21, C.shade);
+    rect(9, 22, 22, 24, C.out); rect(10, 22, 21, 23, C.body); rect(10, 23, 21, 23, C.shade);
+    let led = C.g;
+    if (mode === "idle" || mode === "pulse") {
+      let prev = null;
+      for (let c = 0; c < 20; c++) {
+        const y = 10 + BEAT[(c + frame) % 20];
+        if (prev !== null && Math.abs(y - prev) > 1) { const a = Math.min(y, prev), b = Math.max(y, prev); for (let k = a; k <= b; k++) px(6 + c, k, C.gd); }
+        px(6 + c, y, C.g);
+        prev = y;
+      }
+    } else if (mode === "boot" || mode === "shutdown") {
+      const rows = Math.round(bootP * 10);
+      for (let r = 0; r < rows && r < 10; r++) rect(7, 5 + r, Math.min(24, 6 + LINES[r]), 5 + r, r === rows - 1 ? C.gl : C.gd);
+      if (rows < 10 && frame % 2 === 0) px(7, 5 + Math.max(0, rows), C.gl);
+      led = frame % 2 ? C.g : C.gd;
+    } else if (mode === "happy") {
+      const blink = frame % 24 === 0;
+      if (blink) { rect(10, 8, 11, 8, C.g); rect(19, 8, 20, 8, C.g); } else { rect(10, 7, 11, 8, C.g); rect(19, 7, 20, 8, C.g); }
+      px(9, 11, C.g); rect(10, 12, 20, 12, C.g); px(21, 11, C.g);
+      px(8, 10, "#2a4a2a"); px(22, 10, "#2a4a2a");
+    } else if (mode === "sad") {
+      rect(10, 8, 11, 8, C.y); rect(19, 8, 20, 8, C.y); px(9, 7, C.y); px(21, 7, C.y);
+      px(9, 13, C.y); rect(10, 12, 20, 12, C.y); px(21, 13, C.y);
+      const ty = 9 + (frame % 6); if (ty <= 13) px(20, ty, C.c);
+      led = C.y;
+    } else if (mode === "error") {
+      if (frame % 2 === 0) { rect(15, 6, 16, 10, C.r); rect(15, 12, 16, 13, C.r); }
+      led = C.r;
+    } else if (mode === "off") {
+      if (frame % 4 === 0) px(15, 10, "#1E3454");
+      led = "#3a3020";
+    }
+    px(25, 17, led);
+  }
+  let last = 0;
+  function loop(t) {
+    if (t - last > 110) { frame++; last = t; drawPC(); }
+    if (!reduced) requestAnimationFrame(loop);
+  }
+  function setPC(m, caption) { mode = m; if (caption !== undefined) $("#caption").textContent = caption; drawPC(); }
+  drawPC(); if (!reduced) requestAnimationFrame(loop);
+
+  /* ---------------- the pairing QR code, in Vitals colours with the app logo ----------------
+     It encodes the pairing link (https://<deployment>.convex.site/pair?code=…): a phone camera or
+     Google Lens opens it, and that page opens the Vitals app, or downloads the APK when the app is
+     not installed. Error correction H (30%) is what lets the logo cover the middle. */
+  const LOGO = new Image();
+  LOGO.src = "logo.png";
+  let qrUrl = "https://example.convex.site/pair?code=K7QM2D"; // the prototype's example
+  function drawPairQR(url) {
+    qrUrl = url;
+    if (typeof qrcode !== "function") return;
+    const qr = qrcode(0, "H");
+    qr.addData(url);
+    qr.make();
+    const n = qr.getModuleCount(), quiet = 2;          // + the cream frame = the standard 4-module margin
+    const S = Math.max(3, Math.floor(190 / (n + 2 * quiet)));  // whole pixels per module: crisp edges
+    const size = (n + 2 * quiet) * S, dpr = window.devicePixelRatio || 1;
+    const cv = $("#qr"), g = cv.getContext("2d");
+    cv.width = Math.round(size * dpr); cv.height = Math.round(size * dpr);
+    cv.style.width = size + "px"; cv.style.height = size + "px";
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = "#FDF6E3"; g.fillRect(0, 0, size, size);
+    const at = (i) => (i + quiet) * S;
+    const isFinder = (r, c) => (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+    // Data modules: navy pixels.
+    g.fillStyle = "#0F1B2E";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      // Solid squares, no gaps: at 4 px a sub-pixel gap blurs to grey and scanners fail to read it.
+      if (!isFinder(r, c) && qr.isDark(r, c)) g.fillRect(at(c), at(r), S, S);
+    }
+    // The three corner "eyes": navy ring, dark green centre (dark enough to scan on cream).
+    for (const [r0, c0] of [[0, 0], [0, n - 7], [n - 7, 0]]) {
+      g.fillStyle = "#0F1B2E"; g.fillRect(at(c0), at(r0), 7 * S, 7 * S);
+      g.fillStyle = "#FDF6E3"; g.fillRect(at(c0) + S, at(r0) + S, 5 * S, 5 * S);
+      g.fillStyle = "#2E6B31"; g.fillRect(at(c0) + 2 * S, at(r0) + 2 * S, 3 * S, 3 * S);
+    }
+    // The logo in the middle: about 22% of the width (≈5% of the area, well inside H's 30%).
+    const box = Math.round((n * 0.22) | 0) * S + S, x = (size - box) / 2;
+    const paint = () => {
+      g.fillStyle = "#FDF6E3"; g.fillRect(x - S / 2, x - S / 2, box + S, box + S);
+      g.save(); g.beginPath(); g.roundRect(x, x, box, box, S); g.clip();
+      g.drawImage(LOGO, x, x, box, box); g.restore();
+      g.strokeStyle = "#8B7355"; g.lineWidth = 1.5; g.beginPath(); g.roundRect(x, x, box, box, S); g.stroke();
+    };
+    if (LOGO.complete && LOGO.naturalWidth) paint(); else LOGO.onload = () => drawPairQR(qrUrl);
+  }
+  drawPairQR(qrUrl);
+
+  /* ---------------- confetti ---------------- */
+  function confetti() {
+    if (reduced) return;
+    const cv = $("#confetti"), k = cv.getContext("2d"), cols = ["#F5C542", "#4CAF50", "#81C784", "#26C6DA", "#FF9800", "#FDF6E3"];
+    const bits = Array.from({ length: 90 }, () => ({ x: 230 + Math.random() * 490, y: -20 - Math.random() * 200, vx: (Math.random() - .5) * 2, vy: 1 + Math.random() * 2.5, s: [4, 6, 8][Math.floor(Math.random() * 3)], c: cols[Math.floor(Math.random() * cols.length)] }));
+    const t0 = performance.now();
+    (function step(t) {
+      k.clearRect(0, 0, cv.width, cv.height);
+      for (const b of bits) { b.x += b.vx; b.y += b.vy; b.vy += 0.06; k.fillStyle = b.c; k.fillRect(Math.round(b.x / 2) * 2, Math.round(b.y / 2) * 2, b.s, b.s); }
+      if (t - t0 < 2600) requestAnimationFrame(step); else k.clearRect(0, 0, cv.width, cv.height);
+    })(t0);
+  }
+
+  /* ---------------- screens ---------------- */
+  let current = "welcome", scenario = "new", failNext = false, busy = false, from = null;
+  const opts = { dir: "C:\\Program Files\\Vitals", startup: true, autoupdate: true, driver: true, shortcut: false };
+  function show(id) {
+    current = id;
+    $$(".screen").forEach((s) => s.classList.toggle("on", s.id === "s-" + id));
+    $("#art").classList.toggle("show-qr", id === "pair");
+    $("#caption").textContent = id === "pair" ? "SCAN ME" : "THIS PC";
+    $("#sim-scan").disabled = id !== "pair";
+    const first = $("#s-" + id + " .h"); if (first) first.setAttribute("tabindex", "-1");
+  }
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2600); }
+
+  function startScenario(s) {
+    scenario = s; failNext = s === "error"; busy = false; from = null;
+    $$("[data-scenario]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.scenario === s)));
+    $("#dialog").classList.remove("on");
+    $("#agree").checked = false; syncAgree();
+    if (s === "update") { show("update"); setPC("idle"); }
+    else if (s === "same") { show("manage"); setPC("happy"); }
+    else if (s === "remove") { from = "start"; show("remove"); setPC("sad"); }
+    else { show("welcome"); setPC("idle"); }
+  }
+  $$("[data-scenario]").forEach((b) => b.addEventListener("click", () => startScenario(b.dataset.scenario)));
+
+  /* welcome */
+  function syncAgree() {
+    const ok = $("#agree").checked;
+    $("#agree-wrap").classList.toggle("ok", ok);
+    ["#quick", "#custom"].forEach((id) => $(id).setAttribute("aria-disabled", String(!ok)));
+    $("#agree-hint").textContent = ok ? "" : "Tick the box to continue.";
+  }
+  $("#agree").addEventListener("change", () => { play("toggle"); syncAgree(); });
+  $("#quick").addEventListener("click", () => {
+    if (!$("#agree").checked) { play("error"); $("#agree-wrap").animate([{ transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "none" }], { duration: 180, iterations: 2 }); return; }
+    run("install");
+  });
+  $("#custom").addEventListener("click", () => {
+    if (!$("#agree").checked) { play("error"); $("#agree-wrap").animate([{ transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "none" }], { duration: 180, iterations: 2 }); return; }
+    play("click"); $("#custom-go").textContent = "INSTALL"; from = "welcome"; show("custom");
+  });
+
+  /* custom */
+  $$(".switch").forEach((sw) => sw.addEventListener("click", () => {
+    const on = sw.getAttribute("aria-checked") !== "true";
+    sw.setAttribute("aria-checked", String(on)); opts[sw.dataset.opt] = on; play("toggle");
+  }));
+  $("#change-folder").addEventListener("click", () => { play("click"); if (REAL) send({ cmd: "pickFolder" }); else toast("The real installer opens the Windows folder picker here."); });
+  $("#custom-back").addEventListener("click", () => { play("click"); show(from === "manage" ? "manage" : "welcome"); });
+  $("#custom-go").addEventListener("click", () => run(from === "manage" ? "settings" : "install"));
+
+  /* the runner: install, update, repair, settings, remove */
+  const TIPS = [
+    "Pause monitoring from your phone when you start a game.",
+    "Vitals updates itself. You never need to download it again.",
+    "Tap a computer in the app to see live CPU, GPU and temperatures.",
+    "Add more PCs any time: each one gets its own card in the app.",
+  ];
+  let tipI = 0, tipTimer = null;
+  function startTips() {
+    const el = $("#tip-text"); el.textContent = TIPS[tipI % TIPS.length];
+    clearInterval(tipTimer);
+    tipTimer = setInterval(() => { el.style.opacity = 0; setTimeout(() => { tipI++; el.textContent = TIPS[tipI % TIPS.length]; el.style.opacity = 1; }, 250); }, 3400);
+  }
+  const PLANS = {
+    install: { h: "BOOTING UP...", steps: () => [["Copying Vitals files"], ["Installing the sensor driver", !opts.driver && "Skipped"], ["Starting the Vitals service"], ["Connecting to Vitals"]] },
+    update: { h: "UPDATING...", steps: () => [["Stopping Vitals 1.0.0"], ["Copying Vitals 1.0.1"], ["Starting the Vitals service"]] },
+    repair: { h: "REPAIRING...", steps: () => [["Copying Vitals files"], ["Checking the sensor driver"], ["Starting the Vitals service"]] },
+    settings: { h: "SAVING...", steps: () => [["Applying your settings"], ["Restarting the Vitals service"]] },
+    remove: { h: "SHUTTING DOWN...", steps: () => [["Stopping Vitals"], ["Unlinking this PC from your phone"], ["Removing the sensor driver"], ["Deleting Vitals files"]] },
+  };
+  const OK = '<svg class="ok" viewBox="0 0 10 10" fill="#fff"><path d="M0 5h2v2H0zM2 7h2v2H2zM4 5h2v2H4zM6 3h2v2H6zM8 1h2v2H8z"/></svg>';
+  const X = '<svg class="x" viewBox="0 0 10 10" fill="#fff"><path d="M0 0h2v2H0zM2 2h2v2H2zM4 4h2v2H4zM6 2h2v2H6zM8 0h2v2H8zM2 6h2v2H2zM0 8h2v2H0zM6 6h2v2H6zM8 8h2v2H8z"/></svg>';
+  let plan = null, kind = null, rows = [], resumeAt = 0;
+  function setMeter(p, fail) {
+    const m = $("#meter"); if (!m.children.length) m.innerHTML = "<i></i>".repeat(20);
+    [...m.children].forEach((c, i) => c.classList.toggle("on", i < Math.round(p * 20)));
+    m.classList.toggle("fail", !!fail);
+    $("#pct").textContent = Math.round(p * 100) + "%";
+    bootP = kind === "remove" ? 1 - p : p;
+  }
+  async function run(k, resume = false) {
+    if (busy) return;
+    if (REAL) { realRun(k); return; }
+    busy = true; kind = k;
+    if (!resume) {
+      plan = PLANS[k].steps(); resumeAt = 0;
+      $("#h-run").textContent = PLANS[k].h; $("#h-run").style.color = "";
+      $("#steps").innerHTML = plan.map(([t, note]) => `<li class="${note ? "skip" : ""}"><span class="st">${OK}${X}</span><span>${t}</span>${note ? `<span class="note">${note}</span>` : ""}</li>`).join("");
+      rows = [...$("#steps").children];
+      setMeter(0); play(k === "remove" ? "click" : "start");
+      show("run"); startTips();
+    }
+    $("#err").classList.remove("on"); $("#tip").style.display = "";
+    setPC(k === "remove" ? "shutdown" : "boot");
+    for (let i = resumeAt; i < plan.length; i++) {
+      const li = rows[i];
+      if (plan[i][1]) { li.classList.add("done"); setMeter((i + 1) / plan.length); continue; }
+      li.className = "active";
+      await sleep(reduced ? 400 : 900 + Math.random() * 600);
+      if (scenario === "error" && failNext && k === "install" && i === 2) {
+        failNext = false; resumeAt = i; busy = false;
+        li.className = "fail"; setMeter((i + 0.5) / plan.length, true);
+        $("#h-run").textContent = "SETUP STOPPED"; $("#h-run").style.color = "var(--red)";
+        $("#err").classList.add("on"); $("#tip").style.display = "none";
+        setPC("error"); play("error");
+        return;
+      }
+      li.className = "done"; setMeter((i + 1) / plan.length); play("tick");
+    }
+    await finishRun(k);
+  }
+
+  /** The end of a run, the same for the simulation and the real installer. */
+  async function finishRun(k) {
+    clearInterval(tipTimer);
+    await sleep(350);
+    busy = false;
+    if (k === "remove") { play("uninstalled"); setPC("off"); show("removed"); return; }
+    play("complete");
+    if (k === "install") {
+      setPC("pulse"); await sleep(700); show("pair");
+      if (REAL) { $("#pair-code").textContent = "···"; $("#pair-left").textContent = "Getting a pairing code..."; send({ cmd: "pairStart" }); }
+      return;
+    }
+    setPC("happy");
+    $("#h-done").textContent = k === "update" ? "ALL UP TO DATE" : k === "repair" ? "GOOD AS NEW" : "SETTINGS SAVED";
+    $("#done-text").textContent = k === "update" ? `Vitals ${VERSION} is installed and running. Your settings and pairing were kept.` : k === "repair" ? "Vitals was repaired and is running again." : "Your changes are saved and Vitals is running.";
+    show("done");
+  }
+
+  /* ---------------- the real installer (REAL): the Rust side does the work ---------------- */
+  let VERSION = "1.0.1";
+  const HEADINGS = { install: "BOOTING UP...", update: "UPDATING...", repair: "REPAIRING...", settings: "SAVING...", remove: "SHUTTING DOWN..." };
+  function realRun(k) {
+    busy = true; kind = k;
+    $("#h-run").textContent = HEADINGS[k]; $("#h-run").style.color = "";
+    $("#steps").innerHTML = ""; rows = []; setMeter(0);
+    $("#err").classList.remove("on"); $("#tip").style.display = "";
+    play(k === "remove" ? "click" : "start"); show("run"); startTips();
+    setPC(k === "remove" ? "shutdown" : "boot");
+    const options = { dir: opts.dir, startup: opts.startup, autoUpdate: opts.autoupdate, driver: opts.driver, shortcut: opts.shortcut };
+    send({ cmd: "run", kind: k, options: k === "install" || k === "settings" ? options : null });
+  }
+  function spaced(code) { return code.length === 6 ? code.slice(0, 3) + " " + code.slice(3) : code; }
+  let codeLeft = 0, codeTimer = null;
+  function showCountdown() {
+    const m = Math.floor(codeLeft / 60), s = String(codeLeft % 60).padStart(2, "0");
+    $("#pair-left").textContent = codeLeft > 0 ? `New code in ${m}:${s}` : "Getting a new code...";
+  }
+  function applyOptions(o) {
+    opts.dir = o.dir; opts.startup = o.startup; opts.autoupdate = o.autoUpdate; opts.driver = o.driver; opts.shortcut = o.shortcut;
+    $("#folder").textContent = o.dir;
+    $("#remove-folder").textContent = o.dir; // the uninstall screen names the real folder (E:\..., not the default)
+    $$(".switch").forEach((sw) => sw.setAttribute("aria-checked", String(!!opts[sw.dataset.opt])));
+  }
+  /** Events from the Rust side (installer/setup/src/main.rs, emit). */
+  window.vitalsEvent = (e) => {
+    switch (e.event) {
+      case "hello":
+        VERSION = e.version;
+        $("#ver").textContent = "Setup " + e.version;
+        $$(".this-version").forEach((el) => (el.textContent = e.version));
+        applyOptions(e.installed ? e.installed.options : e.defaults);
+        if (e.installed) { $("#upd-from").textContent = e.installed.version; $("#manage-ver").textContent = e.installed.version; }
+        if (e.screen === "update") { show("update"); setPC("idle"); }
+        else if (e.screen === "manage") { show("manage"); setPC("happy"); }
+        else if (e.screen === "remove") { from = "start"; show("remove"); setPC("sad"); }
+        else if (e.screen === "none") { busy = false; show("none"); setPC("off"); }
+        else { show("welcome"); setPC("idle"); }
+        break;
+      case "plan":
+        plan = e.steps;
+        $("#steps").innerHTML = plan.map((s) => `<li class="${s.note ? "skip" : ""}"><span class="st">${OK}${X}</span><span>${s.label}</span>${s.note ? `<span class="note">${s.note}</span>` : ""}</li>`).join("");
+        rows = [...$("#steps").children];
+        break;
+      case "step": {
+        const li = rows[e.index]; if (!li) break;
+        const skip = !!plan[e.index].note;
+        if (e.state === "active") li.className = "active" + (skip ? " skip" : "");
+        else { li.className = "done" + (skip ? " skip" : ""); setMeter((e.index + 1) / plan.length); if (!skip) play("tick"); }
+        break;
+      }
+      case "failed":
+        busy = false; resumeAt = e.index;
+        if (rows[e.index]) rows[e.index].className = "fail";
+        setMeter((e.index + 0.5) / plan.length, true);
+        $("#h-run").textContent = "SETUP STOPPED"; $("#h-run").style.color = "var(--red)";
+        $("#err-what").textContent = e.what; $("#err-detail").textContent = e.detail;
+        $("#err").classList.add("on"); $("#tip").style.display = "none";
+        setPC("error"); play("error");
+        break;
+      case "finished": finishRun(e.kind); break;
+      case "folder": opts.dir = e.dir; $("#folder").textContent = e.dir; break;
+      case "pair":
+        drawPairQR(e.url);
+        $("#pair-code").textContent = spaced(e.code);
+        codeLeft = e.left; showCountdown();
+        clearInterval(codeTimer);
+        codeTimer = setInterval(() => { codeLeft = Math.max(0, codeLeft - 1); showCountdown(); }, 1000);
+        break;
+      case "pairInfo": $("#pair-left").textContent = e.message; break;
+      case "paired": clearInterval(codeTimer); paired(); break;
+    }
+  };
+
+  $("#retry").addEventListener("click", () => {
+    play("click");
+    $("#h-run").textContent = HEADINGS[kind] || HEADINGS.install; $("#h-run").style.color = "";
+    if (REAL) {
+      busy = true; $("#err").classList.remove("on"); $("#tip").style.display = ""; $("#meter").classList.remove("fail");
+      setPC(kind === "remove" ? "shutdown" : "boot");
+      send({ cmd: "retry" });
+      return;
+    }
+    rows[resumeAt].className = "active"; run("install", true);
+  });
+  $("#copy-err").addEventListener("click", () => {
+    const text = $("#err-what").textContent + " " + $("#err-detail").textContent;
+    play("click");
+    try { navigator.clipboard.writeText(text).then(() => toast("Copied the error details."), () => toast(text)); } catch (e) { toast(text); }
+  });
+
+  /* pairing */
+  function paired() {
+    if (current !== "pair") return;
+    play("paired"); setPC("happy"); show("paired"); confetti();
+  }
+  $("#sim-scan").addEventListener("click", paired);
+  $("#qr").addEventListener("click", () => { if (!REAL) paired(); }); // the prototype's "phone"
+  $("#finish").addEventListener("click", () => { play("click"); closeWindow("Setup closes here. Vitals keeps running."); });
+
+  /* update / manage / done */
+  $("#update-go").addEventListener("click", () => run("update"));
+  $("#update-later").addEventListener("click", () => { play("click"); closeWindow("Setup closes. Vitals updates itself later anyway."); });
+  $("#done-close").addEventListener("click", () => { play("click"); closeWindow("Setup closes here."); });
+  $("#m-repair").addEventListener("click", () => run("repair"));
+  $("#m-settings").addEventListener("click", () => { play("click"); from = "manage"; $("#custom-go").textContent = "SAVE"; show("custom"); });
+  $("#m-remove").addEventListener("click", () => { play("click"); from = "manage"; setPC("sad"); show("remove"); });
+
+  /* uninstall */
+  $("#remove-keep").addEventListener("click", () => {
+    play("click");
+    if (from === "manage") { setPC("happy"); show("manage"); } else { closeWindow("Nothing was removed. The uninstaller closes here."); }
+  });
+  $("#remove-go").addEventListener("click", () => run("remove"));
+  $("#removed-close").addEventListener("click", () => { play("click"); closeWindow("The uninstaller closes here."); });
+  $("#none-close").addEventListener("click", () => { play("click"); closeWindow("The uninstaller closes here."); });
+
+  /* title bar */
+  $("#min").addEventListener("click", () => { play("click"); if (REAL) send({ cmd: "minimize" }); else toast("Minimized to the taskbar (prototype)."); });
+  $("#close").addEventListener("click", () => {
+    play("click");
+    if (current === "run" && busy) { $("#dlg-h").textContent = "QUIT SETUP?"; $("#dlg-p").textContent = "Vitals isn't fully installed yet. Setup stops after the current step; run it again to finish."; $("#dlg-stay").textContent = "KEEP GOING"; $("#dlg-quit").textContent = "QUIT"; }
+    else if (current === "pair") { $("#dlg-h").textContent = "PAIR LATER?"; $("#dlg-p").textContent = "Vitals is installed and running, but no phone is linked yet. To link one later, run this setup again."; $("#dlg-stay").textContent = "KEEP WAITING"; $("#dlg-quit").textContent = "CLOSE"; }
+    else { closeWindow(); return; }
+    $("#dialog").classList.add("on"); $("#dlg-stay").focus();
+  });
+  $("#dlg-stay").addEventListener("click", () => { play("click"); $("#dialog").classList.remove("on"); });
+  $("#dlg-quit").addEventListener("click", () => { play("click"); $("#dialog").classList.remove("on"); closeWindow(); });
+
+  /* scale the 720x480 window to fit narrow screens */
+  function fit() {
+    if (REAL) return; // the native window is already exactly 720x480
+    const w = $("#fit").clientWidth, s = Math.min(1, w / 720);
+    $("#win").style.transform = s < 1 ? `scale(${s})` : "";
+    $("#fit").style.height = 480 * s + "px";
+    $("#fit").style.overflow = s < 1 ? "hidden" : "visible"; // keep the window shadow when it fits
+  }
+  addEventListener("resize", fit); fit();
+
+  // The real installer decides the first screen (new install, update, manage or uninstall).
+  if (REAL) send({ cmd: "hello" });
+})();
+</script>

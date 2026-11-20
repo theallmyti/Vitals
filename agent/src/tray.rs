@@ -21,8 +21,9 @@ use windows_sys::Win32::UI::Shell::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
-    DestroyMenu, DispatchMessageW, GetCursorPos, GetMessageW, HICON, ICONINFO, IDI_APPLICATION,
-    LoadIconW, MF_DISABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage,
+    DestroyMenu, DispatchMessageW, FindWindowW, GetCursorPos, GetMessageW, GetSystemMetrics, HICON,
+    ICONINFO, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LoadIconW, LoadImageW, SM_CXSMICON,
+    SM_CYSMICON, MF_DISABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage,
     RegisterClassExW, SetForegroundWindow, SetTimer, TPM_RIGHTBUTTON, TrackPopupMenu,
     TranslateMessage, WM_COMMAND, WM_DESTROY, WM_RBUTTONUP, WM_TIMER, WM_USER, WNDCLASSEXW,
     WS_POPUP,
@@ -144,6 +145,21 @@ fn create_tray_hicon(is_paused: bool) -> HICON {
     }
 }
 
+/// The Vitals logo embedded in vitals.exe (agent/vitals.rc): 1 = active, 2 = paused (grey pulse),
+/// at the tray's small-icon size so Windows picks the matching frame instead of scaling.
+fn load_logo_icon(id: u16) -> HICON {
+    unsafe {
+        LoadImageW(
+            GetModuleHandleW(null()),
+            id as usize as *const u16,
+            IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON),
+            GetSystemMetrics(SM_CYSMICON),
+            LR_DEFAULTCOLOR,
+        ) as HICON
+    }
+}
+
 struct TrayState {
     data_dir: PathBuf,
     hicon_active: HICON,
@@ -164,6 +180,10 @@ pub fn run() {
     unsafe {
         let hinstance = GetModuleHandleW(null());
         let class_name = to_wide("VitalsAgentTrayClass");
+        // One tray per sign-in: setup, the Start menu and the Run key can all start it.
+        if FindWindowW(class_name.as_ptr(), null()) != 0 {
+            return;
+        }
 
         let wnd_class = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
@@ -201,11 +221,17 @@ pub fn run() {
             return;
         }
 
-        let mut hicon_active = create_tray_hicon(false);
+        let mut hicon_active = load_logo_icon(1);
+        if hicon_active == 0 {
+            hicon_active = create_tray_hicon(false);
+        }
         if hicon_active == 0 {
             hicon_active = LoadIconW(0, IDI_APPLICATION);
         }
-        let mut hicon_paused = create_tray_hicon(true);
+        let mut hicon_paused = load_logo_icon(2);
+        if hicon_paused == 0 {
+            hicon_paused = create_tray_hicon(true);
+        }
         if hicon_paused == 0 {
             hicon_paused = LoadIconW(0, IDI_APPLICATION);
         }

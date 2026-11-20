@@ -1,5 +1,6 @@
 # Release = push an update to every device. Push a tag like v0.2.6 and this:
-#   1. checks the tag matches agent/Cargo.toml, installer/vitals.iss and the app's versionName
+#   1. checks the tag matches agent/Cargo.toml, installer/setup/Cargo.toml, installer/vitals.iss
+#      and the app's versionName
 #   2. builds the Windows agent + installers, the Linux agent (x86-64, ARM64) + .run installers,
 #      and the Android APK (signed with the same key as every earlier APK)
 #   3. publishes them as ONE GitHub Release (a normal release: agents read /releases/latest,
@@ -39,9 +40,10 @@ jobs:
           agent=$(sed -n 's/^version = "\(.*\)"/\1/p' agent/Cargo.toml | head -1)
           iss=$(sed -n 's/^#define AppVersion "\(.*\)"/\1/p' installer/vitals.iss | head -1)
           app=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' android/app/build.gradle.kts | head -1)
-          echo "tag=$version agent=$agent installer=$iss app=$app"
-          for v in "$agent" "$iss" "$app"; do
-            [ "$v" = "$version" ] || { echo "::error::every version must be $version (agent/Cargo.toml, installer/vitals.iss, android versionName)"; exit 1; }
+          setup=$(sed -n 's/^version = "\(.*\)"/\1/p' installer/setup/Cargo.toml | head -1)
+          echo "tag=$version agent=$agent setup=$setup installer=$iss app=$app"
+          for v in "$agent" "$setup" "$iss" "$app"; do
+            [ "$v" = "$version" ] || { echo "::error::every version must be $version (agent/Cargo.toml, installer/setup/Cargo.toml, installer/vitals.iss, android versionName)"; exit 1; }
           done
           echo "version=$version" >> "$GITHUB_OUTPUT"
       # Fail here, before anything is built or published, not after the release is already live.
@@ -65,7 +67,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: agent
+          workspaces: |
+            agent
+            installer/setup
       - name: Test and build agent
         working-directory: agent
         run: |
@@ -86,18 +90,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: ./installer/fetch-pawnio.ps1
 
-      - name: Build installers
+      # The Rust installer (installer/setup) embeds the agent, the PawnIO files and the backend URL,
+      # so it is built after all three. One exe is setup, manager and uninstaller: named
+      # vitals-uninstall.exe it opens on the uninstall screen.
+      - name: Test and build installer
+        shell: pwsh
+        working-directory: installer/setup
+        env:
+          VERSION: ${{ needs.versions.outputs.version }}
+        run: |
+          cargo test --locked
+          if ($LASTEXITCODE -ne 0) { throw "installer tests failed" }
+          cargo build --release --locked
+          if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
+          $dist = "$env:GITHUB_WORKSPACE/dist"
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          Get-ChildItem $dist | Remove-Item -Force
+          $exe = "target/release/vitals-setup.exe"
+          Copy-Item $exe "$dist/vitals-setup-$env:VERSION.exe"
+          Copy-Item $exe "$dist/vitals-setup.exe"
+          Copy-Item $exe "$dist/vitals-uninstall.exe"
+
+      - name: Agent files
         shell: pwsh
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Get-ChildItem dist | Remove-Item -Force
-          & $iscc /Q installer/vitals.iss
-          if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
-          & $iscc /Q installer/vitals-uninstall.iss
-          if ($LASTEXITCODE -ne 0) { throw "uninstaller build failed" }
-          Copy-Item dist/vitals-setup-*.exe dist/vitals-setup.exe
           Copy-Item agent/target/release/vitals.exe dist/vitals.exe
           # The same binary under its pre-rename name: Nexus agents (<= 0.2.5) only auto-update
           # from nexus.exe, so this is how they get Vitals. Keep it until no Nexus agents remain.
