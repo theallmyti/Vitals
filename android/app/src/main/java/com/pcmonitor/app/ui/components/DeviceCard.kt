@@ -44,6 +44,7 @@ import com.pcmonitor.app.ui.theme.WhiteCardBg
 import com.pcmonitor.app.ui.theme.WhiteCardBorder
 import com.pcmonitor.app.ui.theme.WhiteCardText
 import com.pcmonitor.app.ui.theme.WhiteCardTextSecondary
+import kotlin.math.roundToInt
 
 @Composable
 fun DeviceCard(
@@ -199,12 +200,12 @@ fun DeviceCard(
                 val showBattery = device.hasBattery ?: (stats.battery != null)
                 val cell = Modifier.weight(1f)
                 // CPU
-                val cpuTemp = stats.cpu.averageTemperature
+                val cpuTemp = if (stats.cpu.packageTemperature > 0f) stats.cpu.packageTemperature else stats.cpu.averageTemperature
                 val cpuDisplay = if (isOnline) {
                     if (cpuTemp > 0f) {
-                        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F" else "${cpuTemp.toInt()}°C"
+                        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${cpuTemp.roundToInt()}°C"
                     } else if (stats.cpu.totalUtilization > 0f) {
-                        "${stats.cpu.totalUtilization.toInt()}%"
+                        "${stats.cpu.totalUtilization.roundToInt()}%"
                     } else "--"
                 } else "--"
                 StatMiniBox(value = cpuDisplay, label = "CPU", modifier = cell)
@@ -212,12 +213,12 @@ fun DeviceCard(
                 // GPU
                 val gpuDisplay = if (isOnline && stats.gpu != null) {
                     val gpuTemp = stats.gpu.temperature
-                    if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F" else "${gpuTemp.toInt()}°C"
+                    if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${gpuTemp.roundToInt()}°C"
                 } else "--"
                 if (showGpu) StatMiniBox(value = gpuDisplay, label = "GPU", modifier = cell)
 
                 // RAM
-                val ramDisplay = if (isOnline) "${stats.ram.usagePercent.toInt()}%" else "--"
+                val ramDisplay = if (isOnline) "${stats.ram.usagePercent.roundToInt()}%" else "--"
                 StatMiniBox(value = ramDisplay, label = "RAM", modifier = cell)
 
                 // Battery

@@ -651,7 +651,7 @@ class MockDeviceRepository(
         val cpu = CpuStats(
             coreTemperatures = coreTemps,
             packageTemperature = pkgTemp,
-            averageTemperature = avgTemp,
+            averageTemperature = pkgTemp,
             maxTemperature = maxTemp,
             coreUtilizations = coreUtils,
             threadUtilizations = threadList,

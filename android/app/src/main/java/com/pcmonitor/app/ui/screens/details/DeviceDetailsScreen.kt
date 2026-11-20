@@ -82,6 +82,7 @@ import com.pcmonitor.app.ui.theme.OnlineGreen
 import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.PixelGreen
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
+import kotlin.math.roundToInt
 import com.pcmonitor.app.ui.theme.TextDarkGray
 import com.pcmonitor.app.ui.theme.TextWhite
 
@@ -493,9 +494,9 @@ private fun OverviewSection(
     var gpuHistory by remember(device.id) { mutableStateOf<List<Float>>(emptyList()) }
 
     // 1. CPU Temperature Card (Cream card with brown border & green sparkline)
-    val cpuTemp = stats.cpu.averageTemperature
+    val cpuTemp = if (stats.cpu.packageTemperature > 0f) stats.cpu.packageTemperature else stats.cpu.averageTemperature
     val cpuStr = if (isOnline && cpuTemp > 0f) {
-        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F" else "${cpuTemp.toInt()}°C"
+        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${cpuTemp.roundToInt()}°C"
     } else "--"
 
     LaunchedEffect(cpuTemp, isOnline) {
@@ -518,7 +519,7 @@ private fun OverviewSection(
     if (stats.gpu != null || !isOnline) {
         val gpuTemp = stats.gpu?.temperature ?: 0f
         val gpuStr = if (isOnline && gpuTemp > 0f) {
-            if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F" else "${gpuTemp.toInt()}°C"
+            if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${gpuTemp.roundToInt()}°C"
         } else "--"
 
         LaunchedEffect(gpuTemp, isOnline) {
@@ -538,7 +539,7 @@ private fun OverviewSection(
     }
 
     // 3. RAM Usage Card
-    val ramPercent = if (isOnline) stats.ram.usagePercent.toInt() else 0
+    val ramPercent = if (isOnline) stats.ram.usagePercent.roundToInt() else 0
     val ramMainValue = if (isOnline && ramPercent > 0) "$ramPercent%" else "--"
     val ramSubValue = if (isOnline && stats.ram.totalMb > 0) "${formatGb(stats.ram.usedMb)} / ${formatGb(stats.ram.totalMb)}" else "Device offline"
     val ramProgress = if (isOnline) stats.ram.usagePercent / 100f else 0f
@@ -771,9 +772,9 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean,
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val pkgTempStr = if (isOnline && cpu.packageTemperature > 0f) {
-                if (useFahrenheit) "${(cpu.packageTemperature * 9f / 5f + 32).toInt()}°F" else "${cpu.packageTemperature.toInt()}°C"
+                if (useFahrenheit) "${(cpu.packageTemperature * 9f / 5f + 32).roundToInt()}°F" else "${cpu.packageTemperature.roundToInt()}°C"
             } else "--"
-            val loadStr = if (isOnline) "${cpu.totalUtilization.toInt()}%" else "--"
+            val loadStr = if (isOnline) "${cpu.totalUtilization.roundToInt()}%" else "--"
             val clockStr = if (isOnline && cpu.clockSpeedMhz > 0f) {
                 String.format(java.util.Locale.US, "%.1f GHz", cpu.clockSpeedMhz / 1000f)
             } else "--"
