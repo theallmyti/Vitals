@@ -230,6 +230,10 @@ body.nogl #card { position: static; transform: none; opacity: 1; visibility: vis
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
 } }
 </script>
+<!-- Vercel Web Analytics (cookieless page-view counts). Plain-HTML setup: the script is served by
+     Vercel itself at /_vercel/insights/, once Analytics is enabled for the project. -->
+<script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+<script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
 <canvas id="gl" aria-hidden="true"></canvas>
