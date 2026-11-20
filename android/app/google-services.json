@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "524507147772",
+    "project_id": "vitals-e1459",
+    "storage_bucket": "vitals-e1459.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:524507147772:android:2e26a0d1e618e3ac20d679",
+        "android_client_info": {
+          "package_name": "com.pcmonitor.app.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCW442sn2LU0c4KlhDbIF3zzvM9ZXF-ICo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
