@@ -162,10 +162,10 @@ fun Device.problem(): String? {
     val ram = s.ram.usagePercent
     val battery = s.battery
     return when {
-        cpu >= 85f -> "CPU ${cpu.toInt()}°C"
-        gpu >= 80f -> "GPU ${gpu.toInt()}°C"
-        ram >= 90f -> "RAM ${ram.toInt()}%"
-        battery != null && !battery.isCharging && battery.percentage <= 15 -> "Battery ${battery.percentage}%"
+        !cpu.isNaN() && !cpu.isInfinite() && cpu >= 85f -> "CPU ${cpu.toInt()}°C"
+        !gpu.isNaN() && !gpu.isInfinite() && gpu >= 80f -> "GPU ${gpu.toInt()}°C"
+        !ram.isNaN() && !ram.isInfinite() && ram >= 90f -> "RAM ${ram.toInt()}%"
+        battery != null && !battery.isCharging && battery.percentage in 1..15 -> "Battery ${battery.percentage}%"
         else -> null
     }
 }

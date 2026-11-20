@@ -27,65 +27,71 @@ class UserPreferencesRepository(private val context: Context) {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    private val encryptedPrefs by lazy {
-        try {
+    private var prefs: android.content.SharedPreferences = createPrefs()
+
+    private fun createPrefs(): android.content.SharedPreferences {
+        return try {
             val keyGenParameterSpec = androidx.security.crypto.MasterKeys.AES256_GCM_SPEC
             val masterKeyAlias = androidx.security.crypto.MasterKeys.getOrCreate(keyGenParameterSpec)
-            val open = { name: String ->
-                androidx.security.crypto.EncryptedSharedPreferences.create(
-                    name,
-                    masterKeyAlias,
-                    context,
-                    androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                )
-            }
-            open("vitals_encrypted_session").also { it.adoptLegacySession(LEGACY_ENCRYPTED_PREFS) { open(LEGACY_ENCRYPTED_PREFS) } }
-        } catch (e: Exception) {
-            context.getSharedPreferences("vitals_session_fallback", Context.MODE_PRIVATE).also {
-                it.adoptLegacySession(LEGACY_FALLBACK_PREFS) {
-                    context.getSharedPreferences(LEGACY_FALLBACK_PREFS, Context.MODE_PRIVATE)
-                }
-            }
+            val p = androidx.security.crypto.EncryptedSharedPreferences.create(
+                "vitals_encrypted_session",
+                masterKeyAlias,
+                context,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            // Smoke-test keystore decrypt immediately
+            p.getString("__healthcheck__", null)
+            p
+        } catch (t: Throwable) {
+            android.util.Log.w("UserPreferencesRepo", "EncryptedSharedPreferences initialization failed: ${t.message}. Falling back to standard prefs.", t)
+            try {
+                context.deleteSharedPreferences("vitals_encrypted_session")
+            } catch (_: Throwable) {}
+            context.getSharedPreferences("vitals_session_fallback", Context.MODE_PRIVATE)
         }
     }
 
-    /**
-     * Before the rename the session lived in "nexus_*" files. Move the token over once, so an
-     * app update doesn't sign everyone out, then delete the old file (it holds the same token).
-     * The file is checked on disk first: opening a missing one would create it.
-     */
-    private fun android.content.SharedPreferences.adoptLegacySession(
-        legacyName: String,
-        openLegacy: () -> android.content.SharedPreferences
-    ) {
-        val legacyFile = java.io.File(context.applicationInfo.dataDir, "shared_prefs/$legacyName.xml")
-        if (!legacyFile.exists()) return
-        try {
-            val token = openLegacy().getString("auth_token", null)
-            if (token != null && !contains("auth_token")) {
-                edit().putString("auth_token", token).commit()
-            }
-            context.deleteSharedPreferences(legacyName)
-        } catch (e: Exception) {
-            // Unreadable (e.g. its key was lost): leave it; the user signs in again as before.
-        }
-    }
-
-    private val _sessionToken = MutableStateFlow<String?>(encryptedPrefs.getString("auth_token", null))
+    private val _sessionToken = MutableStateFlow<String?>(getSessionToken())
     val sessionToken: Flow<String?> = _sessionToken.asStateFlow()
 
     fun getSessionToken(): String? {
-        return encryptedPrefs.getString("auth_token", null)
+        return try {
+            prefs.getString("auth_token", null)
+        } catch (t: Throwable) {
+            android.util.Log.e("UserPreferencesRepo", "Error reading auth_token: ${t.message}. Recreating fallback.", t)
+            try {
+                context.deleteSharedPreferences("vitals_encrypted_session")
+                prefs = context.getSharedPreferences("vitals_session_fallback", Context.MODE_PRIVATE)
+                prefs.getString("auth_token", null)
+            } catch (_: Throwable) {
+                null
+            }
+        }
     }
 
     fun saveSessionToken(token: String) {
-        encryptedPrefs.edit().putString("auth_token", token).apply()
+        try {
+            prefs.edit().putString("auth_token", token).apply()
+        } catch (t: Throwable) {
+            android.util.Log.e("UserPreferencesRepo", "Error saving auth_token: ${t.message}. Recreating fallback.", t)
+            try {
+                context.deleteSharedPreferences("vitals_encrypted_session")
+                prefs = context.getSharedPreferences("vitals_session_fallback", Context.MODE_PRIVATE)
+                prefs.edit().putString("auth_token", token).apply()
+            } catch (t2: Throwable) {
+                android.util.Log.e("UserPreferencesRepo", "Fallback save failed: ${t2.message}", t2)
+            }
+        }
         _sessionToken.value = token
     }
 
     fun clearSessionToken() {
-        encryptedPrefs.edit().remove("auth_token").apply()
+        try {
+            prefs.edit().remove("auth_token").apply()
+        } catch (t: Throwable) {
+            android.util.Log.e("UserPreferencesRepo", "Error clearing auth_token: ${t.message}", t)
+        }
         _sessionToken.value = null
     }
 

@@ -34,10 +34,14 @@ class PCMonitorApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Global crash safeguard: log and prevent silent process crashes
+        // Global crash safeguard: log and persist crash traces
         val defaultUncaughtHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e("VitalsApplication", "Uncaught exception on thread ${thread.name}: ${throwable.message}", throwable)
+            try {
+                val crashFile = java.io.File(filesDir, "crash_log.txt")
+                crashFile.writeText("Crash on thread ${thread.name} at ${java.util.Date()}:\n" + Log.getStackTraceString(throwable))
+            } catch (_: Throwable) {}
             defaultUncaughtHandler?.uncaughtException(thread, throwable)
         }
 
