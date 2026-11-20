@@ -54,3 +54,23 @@ _nexus_ref/
 # Local Cloudflare CLI cache (account details)
 .cloudflare/
 .vercel
+
+# Kept on disk, not part of the project any more
+# Old manual run scripts (the installer and tray replace them)
+/Create-Desktop-Shortcut.bat
+/Start-PC-Monitor.bat
+/Stop-PC-Monitor.bat
+/run_agent.ps1
+/EASY-SETUP.md
+# Old Inno Setup installer (replaced by installer/setup, built by scripts/build-dist.ps1)
+installer/*.iss
+installer/assets/
+installer/LEGAL_AGREEMENT.rtf
+installer/make_legal_rtf.py
+scripts/build-windows-installer.ps1
+# Personal tooling and superseded scripts
+scripts/generate-skill-index.js
+scripts/local_telemetry_bridge.py
+# Secrets that must never be committed
+*firebase-adminsdk*.json
+*.keystore

@@ -25,8 +25,8 @@ starts (not a USB or network drive), because the service starts at boot. Setup l
 to SYSTEM and Administrators, since the agent runs as LocalSystem.
 
 ## Uninstall
-Three ways, all doing the same: Start menu → Vitals → Uninstall Vitals Agent,
-Settings → Apps, or `dist\vitals-uninstall.exe` (works for any installed version).
+Three ways, all doing the same: search Vitals in Start → Options → Uninstall, Settings → Apps,
+or `dist\vitals-uninstall.exe` (works for any installed version).
 - Stops and deletes the service.
 - Removes this computer and its history from the Vitals dashboard (`vitals unpair`).
 - Removes the PawnIO driver: without asking if this setup installed it, otherwise after asking,
@@ -38,12 +38,9 @@ Settings → Apps, or `dist\vitals-uninstall.exe` (works for any installed versi
 2. Put the Convex deployment URL in `installer\convex-url.txt` (one line, git-ignored; ask the
    project owner). The build stops if it is missing or not a Convex URL.
 3. `powershell -File installer\fetch-pawnio.ps1` (needs `gh`; downloads and checks the PawnIO files)
-4. `"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\vitals.iss`
-   (or `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe` for a per-user Inno Setup install)
-5. Same for `installer\vitals-uninstall.iss` → `dist\vitals-uninstall.exe`
-6. Test build against the dev deployment: put the dev URL in `installer\convex-url-dev.txt` and run
-   `ISCC /DChannel=dev installer\vitals.iss` → `dist\vitals-setup-<version>-dev.exe`
-   (from PowerShell or cmd; Git Bash turns `/DChannel` into a path)
+4. `powershell -File scripts\build-dist.ps1`: builds the agent and the installer
+   (`installer\setup`, Rust + WebView2) and puts `dist\vitals-setup.exe` and
+   `dist\vitals-uninstall.exe` (the same program; that name opens the uninstall screen) in `dist\`
 
 ## Known limits
 - Not code-signed (no budget for a certificate), so Windows SmartScreen shows

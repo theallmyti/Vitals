@@ -1,6 +1,5 @@
 # Release = push an update to every device. Push a tag like v0.2.6 and this:
-#   1. checks the tag matches agent/Cargo.toml, installer/setup/Cargo.toml, installer/vitals.iss
-#      and the app's versionName
+#   1. checks the tag matches agent/Cargo.toml, installer/setup/Cargo.toml and the app's versionName
 #   2. builds the Windows agent + installers, the Linux agent (x86-64, ARM64) + .run installers,
 #      and the Android APK (signed with the same key as every earlier APK)
 #   3. publishes them as ONE GitHub Release (a normal release: agents read /releases/latest,
@@ -12,6 +11,9 @@
 #   CONVEX_URL               prod Convex URL, baked into the installers   (< installer/convex-url.txt)
 #   CONVEX_DEPLOY_KEY        prod deploy key, to call releases:publish    (Convex dashboard > Settings)
 #                            optional: without it, run the printed releases:publish command by hand
+#   GOOGLE_SERVICES_JSON     the app's Firebase config (Firebase console > Project settings > Your
+#                            apps > com.pcmonitor.app.debug): gh secret set GOOGLE_SERVICES_JSON < google-services.json
+#                            optional, but without it the APK has a placeholder and gets no push alerts
 #   ANDROID_KEYSTORE_BASE64  the keystore that signed every earlier APK, base64-encoded
 #                            (base64 -w0 ~/.android/debug.keystore | gh secret set ANDROID_KEYSTORE_BASE64)
 #
@@ -38,12 +40,11 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           agent=$(sed -n 's/^version = "\(.*\)"/\1/p' agent/Cargo.toml | head -1)
-          iss=$(sed -n 's/^#define AppVersion "\(.*\)"/\1/p' installer/vitals.iss | head -1)
           app=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' android/app/build.gradle.kts | head -1)
           setup=$(sed -n 's/^version = "\(.*\)"/\1/p' installer/setup/Cargo.toml | head -1)
-          echo "tag=$version agent=$agent setup=$setup installer=$iss app=$app"
-          for v in "$agent" "$setup" "$iss" "$app"; do
-            [ "$v" = "$version" ] || { echo "::error::every version must be $version (agent/Cargo.toml, installer/setup/Cargo.toml, installer/vitals.iss, android versionName)"; exit 1; }
+          echo "tag=$version agent=$agent setup=$setup app=$app"
+          for v in "$agent" "$setup" "$app"; do
+            [ "$v" = "$version" ] || { echo "::error::every version must be $version (agent/Cargo.toml, installer/setup/Cargo.toml, android versionName)"; exit 1; }
           done
           echo "version=$version" >> "$GITHUB_OUTPUT"
       # Fail here, before anything is built or published, not after the release is already live.
@@ -191,6 +192,16 @@ jobs:
           [ -n "$KEYSTORE" ] || { echo "::error::Repository secret ANDROID_KEYSTORE_BASE64 is not set"; exit 1; }
           # Phones only accept an update signed with the key of the installed app.
           printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/vitals.keystore"
+      - name: Firebase config from secret
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          # Without it, build.gradle.kts writes a placeholder: the app builds but cannot receive pushes.
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON is not set: this APK will not receive push notifications"
+          fi
       - name: Test and build APK
         working-directory: android
         run: |
