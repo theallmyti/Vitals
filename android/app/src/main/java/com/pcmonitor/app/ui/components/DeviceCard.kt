@@ -201,32 +201,39 @@ fun DeviceCard(
 
                 // CPU Temp (package temp; fallback to avg)
                 val cpuTemp = if (stats.cpu.packageTemperature > 0f) stats.cpu.packageTemperature else stats.cpu.averageTemperature
-                val cpuDisplay = if (isOnline) {
-                    if (cpuTemp > 0f) {
-                        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${cpuTemp.roundToInt()}°C"
-                    } else "--"
+                val cpuDisplay = if (isOnline && cpuTemp > 0f && !cpuTemp.isNaN() && !cpuTemp.isInfinite()) {
+                    if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).safeRoundToInt()}°F" else "${cpuTemp.safeRoundToInt()}°C"
                 } else "--"
                 StatMiniBox(value = cpuDisplay, label = "CPU", modifier = cell)
 
                 // GPU Temp
-                val gpuDisplay = if (isOnline && stats.gpu != null) {
-                    val gpuTemp = stats.gpu.temperature
-                    if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).roundToInt()}°F" else "${gpuTemp.roundToInt()}°C"
+                val gpuTemp = stats.gpu?.temperature ?: 0f
+                val gpuDisplay = if (isOnline && showGpu && gpuTemp > 0f && !gpuTemp.isNaN() && !gpuTemp.isInfinite()) {
+                    if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).safeRoundToInt()}°F" else "${gpuTemp.safeRoundToInt()}°C"
                 } else "--"
                 if (showGpu) StatMiniBox(value = gpuDisplay, label = "GPU", modifier = cell)
 
                 // RAM %
-                val ramDisplay = if (isOnline) "${stats.ram.usagePercent.roundToInt()}%" else "--"
+                val ramPct = stats.ram.usagePercent
+                val ramDisplay = if (isOnline && !ramPct.isNaN() && !ramPct.isInfinite()) {
+                    "${ramPct.safeRoundToInt()}%"
+                } else "--"
                 StatMiniBox(value = ramDisplay, label = "RAM", modifier = cell)
 
                 // CPU Usage % (replaces Battery in the top row; Battery is in the expandable detail)
-                val cpuUsageDisplay = if (isOnline && stats.cpu.totalUtilization > 0f) {
-                    "${stats.cpu.totalUtilization.roundToInt()}%"
+                val cpuUtil = stats.cpu.totalUtilization
+                val cpuUsageDisplay = if (isOnline && cpuUtil >= 0f && !cpuUtil.isNaN() && !cpuUtil.isInfinite()) {
+                    "${cpuUtil.safeRoundToInt()}%"
                 } else "--"
                 StatMiniBox(value = cpuUsageDisplay, label = "CPU %", modifier = cell)
             }
         }
     }
+}
+
+private fun Float.safeRoundToInt(fallback: Int = 0): Int {
+    if (isNaN() || isInfinite()) return fallback
+    return roundToInt()
 }
 
 @Composable
