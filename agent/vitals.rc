@@ -1,0 +1,5 @@
+// Windows resources for vitals.exe. Icon 1 is the app icon Windows shows in Start, search and
+// shortcuts (the first icon in the file); icon 2 is the tray icon while monitoring is paused.
+// Both are drawn by installer/setup/make_icon.py.
+1 ICON "icons/vitals.ico"
+2 ICON "icons/vitals-paused.ico"

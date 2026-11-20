@@ -30,7 +30,7 @@ Paste into PowerShell:
 irm https://github.com/theallmyti/Vitals/releases/latest/download/install.ps1 | iex
 ```
 
-It downloads the setup, checks it against `SHA256SUMS` and starts it; Windows asks for admin rights. The setup ends on the pairing **QR code**. Or download **`vitals-setup-@VERSION@.exe`** and run it yourself.
+It downloads the setup, checks it against `SHA256SUMS` and starts it; Windows asks for admin rights. The setup ends on the pairing **QR code**. Or download **`vitals-setup-@VERSION@.exe`** (same file as `vitals-setup.exe`) and run it yourself.
 
 ### Android
 
@@ -40,7 +40,7 @@ Download **`vitals-app-@VERSION@.apk`** on the phone and open it. Allow "install
 
 | File | What it is |
 |---|---|
-| `vitals-setup-@VERSION@.exe` | Windows installer |
+| `vitals-setup-@VERSION@.exe`, `vitals-setup.exe` | Windows installer (the same file; it also repairs, changes settings and uninstalls) |
 | `vitals-@VERSION@-linux-amd64.run` | Linux installer, x86-64 PCs |
 | `vitals-@VERSION@-linux-arm64.run` | Linux installer, ARM64 (Raspberry Pi 4/5 and similar) |
 | `vitals-app-@VERSION@.apk` | Android app |

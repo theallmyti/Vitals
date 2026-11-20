@@ -37,6 +37,7 @@ Thumbs.db
 agent/agent.log
 agent/agent.log.err
 installer/vendor/
+installer/setup/target/
 dist/
 **/convex-url*.txt
 scratch/

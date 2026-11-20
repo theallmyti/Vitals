@@ -1,6 +1,6 @@
 [package]
 name = "vitals"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 
 [dependencies]
@@ -17,6 +17,9 @@ sysinfo = "0.40.1"
 tokio = { version = "1.54.1", default-features = false, features = ["rt", "macros", "time", "process", "io-util", "sync", "signal"] }
 toml = "1.1.8"
 ureq = { version = "3.5.1", features = ["json"] }
+
+[build-dependencies]
+embed-resource = "3.0.12"
 
 [target."cfg(windows)".dependencies]
 libloading = "0.9.0"

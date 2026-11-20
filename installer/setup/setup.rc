@@ -1,0 +1,31 @@
+// Windows resources for vitals-setup.exe: icon, the admin manifest, and the file details shown in
+// Explorer (Properties > Details). VERSION_* come from Cargo.toml through build.rs.
+#include <winver.h>
+
+1 ICON "vitals.ico"
+1 24 "setup.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION VERSION_MAJOR,VERSION_MINOR,VERSION_PATCH,0
+PRODUCTVERSION VERSION_MAJOR,VERSION_MINOR,VERSION_PATCH,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Vitals"
+      VALUE "FileDescription", "Vitals Setup"
+      VALUE "FileVersion", VERSION_STR
+      VALUE "ProductName", "Vitals"
+      VALUE "ProductVersion", VERSION_STR
+      VALUE "LegalCopyright", "MIT License"
+      VALUE "OriginalFilename", "vitals-setup.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
