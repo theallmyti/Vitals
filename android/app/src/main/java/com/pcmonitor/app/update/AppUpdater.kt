@@ -64,6 +64,38 @@ object AppUpdater {
         _state.value = UpdateState.Idle
     }
 
+    /** Compares two semantic version strings ("1.1.1" vs "1.1.0"). Returns > 0 if a > b. */
+    fun compareVersions(a: String, b: String): Int {
+        val parse = { s: String -> s.split(".").map { it.filter(Char::isDigit).toIntOrNull() ?: 0 } }
+        val x = parse(a)
+        val y = parse(b)
+        val maxLen = maxOf(x.size, y.size)
+        for (i in 0 until maxLen) {
+            val xi = x.getOrElse(i) { 0 }
+            val yi = y.getOrElse(i) { 0 }
+            if (xi != yi) return xi.compareTo(yi)
+        }
+        return 0
+    }
+
+    /**
+     * Determines whether an in-app update should be prompted.
+     * The release must have a strictly newer semver than installedVersion (if installedVersion is known)
+     * AND releaseCode must be greater than installedCode.
+     */
+    fun isUpdateNeeded(
+        releaseVersion: String,
+        releaseCode: Long,
+        installedVersion: String?,
+        installedCode: Long
+    ): Boolean {
+        val installedVer = installedVersion?.trim().orEmpty()
+        if (installedVer.isNotBlank() && compareVersions(releaseVersion, installedVer) <= 0) {
+            return false
+        }
+        return releaseCode > installedCode
+    }
+
     /** Asks the backend for the published app; shows the dialog if it is newer than this build. */
     suspend fun check(context: Context) {
         if (dismissedThisSession || _state.value !is UpdateState.Idle) return
@@ -71,8 +103,9 @@ object AppUpdater {
         val installed = context.packageManager.getPackageInfo(context.packageName, 0)
         val installedCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) installed.longVersionCode
             else @Suppress("DEPRECATION") installed.versionCode.toLong()
-        if (release.versionCode > installedCode) {
-            _state.value = UpdateState.Available(release, installed.versionName ?: "?")
+        val installedVer = installed.versionName ?: ""
+        if (isUpdateNeeded(release.version, release.versionCode, installedVer, installedCode)) {
+            _state.value = UpdateState.Available(release, if (installedVer.isNotBlank()) installedVer else "?")
         }
     }
 

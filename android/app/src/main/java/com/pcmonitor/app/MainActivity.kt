@@ -77,7 +77,10 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         val app = application as PCMonitorApplication
-        lifecycleScope.launch { app.deviceRepository.startMockSimulation() }
+        lifecycleScope.launch {
+            app.deviceRepository.startMockSimulation()
+            app.deviceRepository.refresh()
+        }
         // Each time the app comes to the front: is there a newer published build?
         lifecycleScope.launch { AppUpdater.check(this@MainActivity) }
     }

@@ -201,12 +201,13 @@ class MockDeviceRepository(
                             parsedStats.copy(
                                 gpu = parsedStats.gpu ?: existing.hardwareStats.gpu,
                                 battery = parsedStats.battery ?: existing.hardwareStats.battery,
+                                disks = parsedStats.disks.ifEmpty { existing.hardwareStats.disks },
                                 usage = if (parsedStats.usage.uptimeSeconds > 0) parsedStats.usage else existing.hardwareStats.usage
                             )
                         } else {
                             parsedStats
                         }
-                    } else if (existing != null && existing.hardwareStats.cpu.totalUtilization > 0f) {
+                    } else if (existing != null && (existing.hardwareStats.cpu.totalUtilization > 0f || existing.hardwareStats.cpu.averageTemperature > 0f)) {
                         existing.hardwareStats
                     } else {
                         createEmptyHardwareStats()
@@ -216,13 +217,19 @@ class MockDeviceRepository(
                         baseStats.copy(disks = parseDisks(caps?.optJSONArray("drives")))
                     } else baseStats
 
+                    val effectiveLastSeen = when {
+                        latestTs > 0L -> latestTs
+                        existing != null && existing.lastSeen > 0L -> existing.lastSeen
+                        else -> lastSeen
+                    }
+
                     val device = Device(
                         id = id,
                         name = name,
                         os = os,
                         type = devType,
                         isOnline = isOnline,
-                        lastSeen = lastSeen,
+                        lastSeen = effectiveLastSeen,
                         hardwareStats = stats,
                         ownerId = activeUserEmail,
                         hasGpu = if (caps?.has("hasNvidiaGpu") == true) caps.optBoolean("hasNvidiaGpu") else null,
@@ -235,6 +242,7 @@ class MockDeviceRepository(
                 if (newDevices.isNotEmpty()) {
                     if (activeDeviceId.isBlank() || newDevices.none { it.id == activeDeviceId }) {
                         activeDeviceId = newDevices[0].id
+                        lastViewerPingMs = 0L
                     }
                 } else {
                     activeDeviceId = ""
@@ -297,12 +305,13 @@ class MockDeviceRepository(
 
     override fun setActiveDevice(deviceId: String) {
         if (deviceId.isBlank()) return
-        if (activeDeviceId != deviceId) {
+        val changed = activeDeviceId != deviceId
+        activeDeviceId = deviceId
+        if (changed || lastViewerPingMs == 0L) {
             // Tell the agent right away that someone is watching this device; otherwise live data
             // only started at the next 15 s keepalive.
             lastViewerPingMs = 0L
         }
-        activeDeviceId = deviceId
     }
 
     override suspend fun addDevice(device: Device) {
@@ -379,6 +388,7 @@ class MockDeviceRepository(
             if (activeUserEmail.isNotBlank()) return@repeat
             delay(250L)
         }
+        lastViewerPingMs = 0L
         lastDevicesFetchMs = System.currentTimeMillis()
         withContext(Dispatchers.IO) { fetchDevicesFromConvex() }
     }
@@ -420,8 +430,8 @@ class MockDeviceRepository(
 
                 val now = System.currentTimeMillis()
 
-                // Periodically discover/refresh devices from Convex (every 5s if empty, or every 15s)
-                val interval = if (_devices.value.isEmpty()) 5000L else 15000L
+                // Periodically discover/refresh devices from Convex (every 5s)
+                val interval = 5000L
                 if (now - lastDevicesFetchMs > interval) {
                     lastDevicesFetchMs = now
                     fetchDevicesFromConvex()
@@ -438,12 +448,23 @@ class MockDeviceRepository(
                     try {
                         val token = userPreferencesRepository?.getSessionToken()
                         if (!token.isNullOrBlank()) {
-                            val pingReq = ConvexHttp.request(
-                                "mutation", "devices:setViewer",
-                                JSONObject().put("token", token).put("deviceId", queriedId)
+                            // 1. Keep all user devices alive in live-streaming mode while app is visible
+                            val pingAllReq = ConvexHttp.request(
+                                "mutation", "dashboard:setViewerAll",
+                                JSONObject().put("token", token)
                             )
                             withContext(Dispatchers.IO) {
-                                httpClient.newCall(pingReq).execute().close()
+                                httpClient.newCall(pingAllReq).execute().close()
+                            }
+                            // 2. Also keep active device lease refreshed explicitly
+                            if (queriedId.isNotBlank()) {
+                                val pingReq = ConvexHttp.request(
+                                    "mutation", "devices:setViewer",
+                                    JSONObject().put("token", token).put("deviceId", queriedId)
+                                )
+                                withContext(Dispatchers.IO) {
+                                    httpClient.newCall(pingReq).execute().close()
+                                }
                             }
                         }
                     } catch (e: Exception) {
@@ -585,9 +606,10 @@ class MockDeviceRepository(
         val gpuObj = value.optJSONObject("gpu")
         val ramObj = value.optJSONObject("ram")
         val batteryObj = value.optJSONObject("battery")
+        val usageObj = value.optJSONObject("usage")
 
         // 1. CPU Telemetry
-        val util = cpuObj?.optDouble("util", 0.0)?.toFloat() ?: 0f
+        val util = (cpuObj?.optDouble("util", value.optDouble("cpuUtil", value.optDouble("cpuUtilAvg", 0.0))) ?: 0.0).toFloat()
         val perCoreArr = cpuObj?.optJSONArray("perCoreUtil")
         val threadList = mutableListOf<Float>()
         if (perCoreArr != null) {
@@ -595,9 +617,9 @@ class MockDeviceRepository(
                 threadList.add(perCoreArr.optDouble(i, util.toDouble()).toFloat())
             }
         }
-        val cpuTemp = cpuObj?.optDouble(
+        val rawCpuTemp = cpuObj?.optDouble(
             "packageTemp",
-            cpuObj.optDouble("cpuTemp", value.optDouble("cpuTemp", 0.0))
+            cpuObj.optDouble("cpuTemp", value.optDouble("cpuTemp", value.optDouble("cpuTempAvg", 0.0)))
         )?.toFloat() ?: 0f
 
         val clocksArr = cpuObj?.optJSONArray("clocks")
@@ -622,11 +644,15 @@ class MockDeviceRepository(
             (0 until coreTempsArr.length()).map { coreTempsArr.optDouble(it, 0.0).toFloat() }
         } else emptyList()
 
+        val avgTemp = if (coreTemps.isNotEmpty()) coreTemps.average().toFloat() else rawCpuTemp
+        val maxTemp = if (coreTemps.isNotEmpty()) maxOf(coreTemps.maxOrNull() ?: rawCpuTemp, rawCpuTemp) else rawCpuTemp
+        val pkgTemp = if (rawCpuTemp > 0f) rawCpuTemp else avgTemp
+
         val cpu = CpuStats(
             coreTemperatures = coreTemps,
-            packageTemperature = cpuTemp,
-            averageTemperature = cpuTemp,
-            maxTemperature = cpuTemp,
+            packageTemperature = pkgTemp,
+            averageTemperature = avgTemp,
+            maxTemperature = maxTemp,
             coreUtilizations = coreUtils,
             threadUtilizations = threadList,
             totalUtilization = util,
@@ -636,7 +662,7 @@ class MockDeviceRepository(
 
         // 2. GPU Telemetry
         val gpu = if (gpuObj != null) {
-            val gpuName = gpuObj.optString("name").ifBlank { "GPU" }
+            val gpuName = gpuObj.optString("name").ifBlank { "NVIDIA GPU" }
             GpuStats(
                 name = gpuName,
                 temperature = gpuObj.optDouble("temp", 0.0).toFloat(),
@@ -657,6 +683,22 @@ class MockDeviceRepository(
             val freeGb = detail?.optDouble("free", 0.0) ?: ramObj.optDouble("freeGb", 0.0)
             val swapTotalGb = detail?.optDouble("swapTotal", 0.0) ?: 0.0
             val swapUsedGb = detail?.optDouble("swapUsed", 0.0) ?: 0.0
+            val usedPct = ramObj.optDouble("usedPct", value.optDouble("ramPct", value.optDouble("ramPctAvg", 0.0)))
+
+            val (totalMb, usedMb, freeMb) = when {
+                totalGb > 0.0 -> {
+                    val tot = (totalGb * 1024.0).toLong()
+                    val usd = if (usedGb > 0.0) (usedGb * 1024.0).toLong() else if (usedPct > 0.0) (tot * usedPct / 100.0).toLong() else 0L
+                    val fre = if (freeGb > 0.0) (freeGb * 1024.0).toLong() else maxOf(0L, tot - usd)
+                    Triple(tot, usd, fre)
+                }
+                usedPct > 0.0 -> {
+                    val tot = 10000L
+                    val usd = (10000L * usedPct / 100.0).toLong()
+                    Triple(tot, usd, tot - usd)
+                }
+                else -> Triple(0L, 0L, 0L)
+            }
 
             val topProcsArr = ramObj.optJSONArray("topProcs")
             val topProcsList = mutableListOf<ProcessInfo>()
@@ -676,9 +718,9 @@ class MockDeviceRepository(
             }
 
             RamStats(
-                usedMb = (usedGb * 1024.0).toLong(),
-                totalMb = (totalGb * 1024.0).toLong(),
-                freeMb = (freeGb * 1024.0).toLong(),
+                usedMb = usedMb,
+                totalMb = totalMb,
+                freeMb = freeMb,
                 cachedMb = (detail?.optDouble("cached", 0.0)?.times(1024.0))?.toLong() ?: 0L,
                 swapUsedMb = (swapUsedGb * 1024.0).toLong(),
                 swapTotalMb = (swapTotalGb * 1024.0).toLong(),
@@ -711,12 +753,31 @@ class MockDeviceRepository(
 
         // 6. System Uptime & Usage
         val uptimeSec = value.optLong("uptimeSec", 0L)
+        val activeTimeSec = usageObj?.optLong("activeTimeSec", 0L) ?: 0L
+        val bootTime = usageObj?.optLong("bootTime", 0L) ?: (if (uptimeSec > 0L) System.currentTimeMillis() - uptimeSec * 1000L else 0L)
+        val eventsArr = usageObj?.optJSONArray("events")
+        val bootHistory = mutableListOf<BootEvent>()
+        if (eventsArr != null && eventsArr.length() > 0) {
+            for (i in 0 until eventsArr.length()) {
+                val ev = eventsArr.optJSONObject(i) ?: continue
+                val eventName = ev.optString("event", "boot").lowercase()
+                val eventType = when (eventName) {
+                    "boot" -> BootEventType.BOOT
+                    "sleep" -> BootEventType.SLEEP
+                    "wake" -> BootEventType.WAKE
+                    "shutdown" -> BootEventType.SHUTDOWN
+                    else -> BootEventType.BOOT
+                }
+                bootHistory.add(BootEvent(eventType, ev.optLong("ts", 0L)))
+            }
+        } else if (bootTime > 0L) {
+            bootHistory.add(BootEvent(BootEventType.BOOT, bootTime))
+        }
+
         val usage = UsageStats(
             uptimeSeconds = uptimeSec,
-            activeTimeTodaySeconds = 0L,
-            bootHistory = if (uptimeSec > 0L) {
-                listOf(BootEvent(BootEventType.BOOT, System.currentTimeMillis() - uptimeSec * 1000L))
-            } else emptyList()
+            activeTimeTodaySeconds = activeTimeSec,
+            bootHistory = bootHistory
         )
 
         return HardwareStats(
