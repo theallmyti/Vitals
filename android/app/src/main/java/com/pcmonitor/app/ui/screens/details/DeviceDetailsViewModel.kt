@@ -64,6 +64,17 @@ class DeviceDetailsViewModel(
         deviceRepository.setActiveDevice(deviceId)
     }
 
+    fun onScreenVisible() = deviceRepository.setActiveDevice(deviceId)
+
+    // Leaving the page (back to Home, or on to History) stops the 1 s polling and the viewer
+    // lease for this device; before, it kept running for the last device opened.
+    fun onScreenHidden() = deviceRepository.clearActiveDevice(deviceId)
+
+    override fun onCleared() {
+        deviceRepository.clearActiveDevice(deviceId)
+        super.onCleared()
+    }
+
     fun onTabSelected(tab: DetailTab) {
         selectedTab = tab
     }

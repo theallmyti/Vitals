@@ -232,11 +232,9 @@ class MockDeviceRepository(
                     newDevices.add(device.copy(hardwareStats = device.gate(stats)))
                 }
                 _devices.value = newDevices
-                if (newDevices.isNotEmpty()) {
-                    if (activeDeviceId.isBlank() || newDevices.none { it.id == activeDeviceId }) {
-                        activeDeviceId = newDevices[0].id
-                    }
-                } else {
+                // Only a device whose screen is open is "active"; the lists stay live through
+                // setViewerAll instead of always streaming the first device.
+                if (newDevices.none { it.id == activeDeviceId }) {
                     activeDeviceId = ""
                 }
                 Log.i(TAG, "Fetched ${newDevices.size} devices for user $activeUserEmail. Active device: $activeDeviceId")
@@ -305,6 +303,26 @@ class MockDeviceRepository(
         activeDeviceId = deviceId
     }
 
+    override fun clearActiveDevice(deviceId: String) {
+        if (activeDeviceId == deviceId) activeDeviceId = ""
+    }
+
+    // How many device lists are on screen (Home and Devices can overlap during a tab switch).
+    private val visibleLists = java.util.concurrent.atomic.AtomicInteger(0)
+    private var lastViewerAllPingMs: Long = 0L
+
+    override fun setListVisible(visible: Boolean) {
+        if (visible) {
+            if (visibleLists.getAndIncrement() == 0) {
+                // Start every agent streaming now, and show fresh numbers within a second or two.
+                lastViewerAllPingMs = 0L
+                lastDevicesFetchMs = 0L
+            }
+        } else {
+            visibleLists.updateAndGet { if (it > 0) it - 1 else 0 }
+        }
+    }
+
     override suspend fun addDevice(device: Device) {
         _devices.value = _devices.value.filter { it.id != device.id } + device
         activeDeviceId = device.id
@@ -313,7 +331,7 @@ class MockDeviceRepository(
     override suspend fun removeDevice(deviceId: String) {
         _devices.value = _devices.value.filter { it.id != deviceId }
         if (activeDeviceId == deviceId) {
-            activeDeviceId = _devices.value.firstOrNull()?.id ?: ""
+            activeDeviceId = ""
         }
         val token = userPreferencesRepository?.getSessionToken()
         if (!token.isNullOrBlank()) {
@@ -418,164 +436,200 @@ class MockDeviceRepository(
 
                 if (activeUserEmail.isBlank()) continue
 
-                val now = System.currentTimeMillis()
-
-                // Periodically discover/refresh devices from Convex (every 5s if empty, or every 15s)
-                val interval = if (_devices.value.isEmpty()) 5000L else 15000L
-                if (now - lastDevicesFetchMs > interval) {
-                    lastDevicesFetchMs = now
-                    fetchDevicesFromConvex()
-                }
-
-                if (activeDeviceId.isBlank()) continue
-                // Snapshot the id: the user can open another device while the query below is in
-                // flight, and its answer must land on the device it was asked for.
-                val queriedId = activeDeviceId
-
-                // Renew live viewing lease every 15s per contract (ANDROID_INTEGRATION_GUIDE Section 5)
-                if (now - lastViewerPingMs > 15000L) {
-                    lastViewerPingMs = now
-                    try {
-                        val token = userPreferencesRepository?.getSessionToken()
-                        if (!token.isNullOrBlank()) {
-                            val pingReq = ConvexHttp.request(
-                                "mutation", "devices:setViewer",
-                                JSONObject().put("token", token).put("deviceId", queriedId)
-                            )
-                            withContext(Dispatchers.IO) {
-                                httpClient.newCall(pingReq).execute().close()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.d(TAG, "Viewer keepalive failed: ${e.message}")
-                    }
-                }
-
-                var liveStats: HardwareStats? = null
-                var snapshotTs = 0L
-                var isDeviceOnline: Boolean? = null
-
-                // Query Convex Cloud directly over cellular / internet (no local bridge)
+                // One bad answer (parse error, odd value) must not end live updates until the app
+                // is reopened: log it and try again next second.
                 try {
-                    val token = userPreferencesRepository?.getSessionToken()
-                    if (!token.isNullOrBlank()) {
-                        val req = ConvexHttp.request(
-                            "query", "devices:getDeviceLatest",
-                            JSONObject().put("token", token).put("deviceId", queriedId)
-                        )
-                        val resp = withContext(Dispatchers.IO) {
-                            httpClient.newCall(req).execute()
-                        }
-                        if (resp.isSuccessful) {
-                            val body = resp.body?.string()
-                            if (!body.isNullOrBlank()) {
-                                val envelope = JSONObject(body)
-                                val value = envelope.optJSONObject("value")
-                                if (value != null) {
-                                    snapshotTs = value.optLong("ts", 0L)
-                                    val onlineFlag = value.optBoolean("isOnline", false)
-                                    val ageMs = now - snapshotTs
-                                    if (onlineFlag || (snapshotTs > 0L && ageMs < 45000L)) {
-                                        isDeviceOnline = true
-                                    } else {
-                                        isDeviceOnline = false
-                                    }
-                                    if (value.has("cpu") || value.has("ram")) {
-                                        liveStats = parseConvexSnapshot(value)
-                                    }
-                                }
+                    pollOnce()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Live poll failed: ${t.message}", t)
+                }
+            }
+        }
+    }
+
+    private suspend fun pollOnce() {
+        val now = System.currentTimeMillis()
+        val listVisible = visibleLists.get() > 0
+
+        // While a device list is on screen, ask every paired computer to stream (the agents
+        // only send live data while someone is watching), renewed well inside the 30 s lease.
+        if (listVisible && _devices.value.isNotEmpty() && now - lastViewerAllPingMs > 15000L) {
+            lastViewerAllPingMs = now
+            try {
+                val token = userPreferencesRepository?.getSessionToken()
+                if (!token.isNullOrBlank()) {
+                    val req = ConvexHttp.request(
+                        "mutation", "dashboard:setViewerAll",
+                        JSONObject().put("token", token)
+                    )
+                    withContext(Dispatchers.IO) { httpClient.newCall(req).execute().close() }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "List viewer keepalive failed: ${e.message}")
+            }
+        }
+
+        // Refresh the device list from Convex: every 3 s while a list is on screen (live
+        // numbers), otherwise every 5 s while empty or every 15 s.
+        val interval = when {
+            listVisible -> 3000L
+            _devices.value.isEmpty() -> 5000L
+            else -> 15000L
+        }
+        if (now - lastDevicesFetchMs > interval) {
+            lastDevicesFetchMs = now
+            fetchDevicesFromConvex()
+        }
+
+        if (activeDeviceId.isBlank()) return
+        // Snapshot the id: the user can open another device while the query below is in
+        // flight, and its answer must land on the device it was asked for.
+        val queriedId = activeDeviceId
+
+        // Renew live viewing lease every 15s per contract (ANDROID_INTEGRATION_GUIDE Section 5)
+        if (now - lastViewerPingMs > 15000L) {
+            lastViewerPingMs = now
+            try {
+                val token = userPreferencesRepository?.getSessionToken()
+                if (!token.isNullOrBlank()) {
+                    val pingReq = ConvexHttp.request(
+                        "mutation", "devices:setViewer",
+                        JSONObject().put("token", token).put("deviceId", queriedId)
+                    )
+                    withContext(Dispatchers.IO) {
+                        httpClient.newCall(pingReq).execute().close()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Viewer keepalive failed: ${e.message}")
+            }
+        }
+
+        var liveStats: HardwareStats? = null
+        var snapshotTs = 0L
+        var isDeviceOnline: Boolean? = null
+
+        // Query Convex Cloud directly over cellular / internet (no local bridge)
+        try {
+            val token = userPreferencesRepository?.getSessionToken()
+            if (!token.isNullOrBlank()) {
+                val req = ConvexHttp.request(
+                    "query", "devices:getDeviceLatest",
+                    JSONObject().put("token", token).put("deviceId", queriedId)
+                )
+                val resp = withContext(Dispatchers.IO) {
+                    httpClient.newCall(req).execute()
+                }
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string()
+                    if (!body.isNullOrBlank()) {
+                        val envelope = JSONObject(body)
+                        val value = envelope.optJSONObject("value")
+                        if (value != null) {
+                            snapshotTs = value.optLong("ts", 0L)
+                            val onlineFlag = value.optBoolean("isOnline", false)
+                            val ageMs = now - snapshotTs
+                            if (onlineFlag || (snapshotTs > 0L && ageMs < 45000L)) {
+                                isDeviceOnline = true
+                            } else {
+                                isDeviceOnline = false
+                            }
+                            if (value.has("cpu") || value.has("ram")) {
+                                liveStats = parseConvexSnapshot(value)
                             }
                         }
-                        resp.close()
-                    }
-                } catch (e: Exception) {
-                    Log.d(TAG, "Convex query error: ${e.message}")
-                }
-
-                // Update device in state:
-                _devices.value = _devices.value.map { device ->
-                    if (device.id == queriedId) {
-                        val online = when {
-                            isDeviceOnline == true -> true
-                            isDeviceOnline == false -> false
-                            device.lastSeen > 0L && (now - device.lastSeen < 180000L) -> device.isOnline
-                            else -> false
-                        }
-                        val effectiveLastSeen = if (snapshotTs > 0L) snapshotTs else device.lastSeen
-                        val stats = if (liveStats != null) {
-                            liveStats.copy(
-                                gpu = liveStats.gpu ?: device.hardwareStats.gpu,
-                                battery = liveStats.battery ?: device.hardwareStats.battery,
-                                disks = liveStats.disks.ifEmpty { device.hardwareStats.disks },
-                                usage = if (liveStats.usage.uptimeSeconds > 0) liveStats.usage else device.hardwareStats.usage
-                            )
-                        } else if (online) {
-                            device.hardwareStats
-                        } else {
-                            createEmptyHardwareStats()
-                        }
-                        device.copy(
-                            hardwareStats = device.gate(stats),
-                            isOnline = online,
-                            lastSeen = effectiveLastSeen
-                        )
-                    } else {
-                        device
                     }
                 }
+                resp.close()
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Convex query error: ${e.message}")
+        }
 
-                // Evaluate hardware thresholds in real-time and fire heads-up notifications
-                if (liveStats != null && context != null && userPreferencesRepository != null) {
-                    try {
-                        val cpuLimit = userPreferencesRepository.getDeviceCpuThreshold(queriedId).first()
-                        val gpuLimit = userPreferencesRepository.getDeviceGpuThreshold(queriedId).first()
-                        val ramLimit = userPreferencesRepository.getDeviceRamThreshold(queriedId).first()
-
-                        val currentDevice = _devices.value.find { it.id == queriedId }
-                        val devName = currentDevice?.name ?: "Primary PC"
-
-                        // 1. RAM Usage Evaluation
-                        val ramPct = liveStats.ram.usagePercent
-                        if (ramPct > ramLimit && (now - lastRamAlertMs > ALERT_COOLDOWN_MS)) {
-                            lastRamAlertMs = now
-                            NotificationHelper.showHardwareAlert(
-                                context = context,
-                                deviceId = queriedId,
-                                title = "$devName · RAM High",
-                                message = "RAM usage is ${ramPct.toInt()}% (exceeds ${ramLimit.toInt()}% threshold)"
-                            )
-                            Log.w(TAG, "Hardware Alert triggered: RAM $ramPct% > $ramLimit%")
-                        }
-
-                        // 2. CPU Temperature Evaluation
-                        val cpuTemp = liveStats.cpu.packageTemperature
-                        if (cpuTemp > cpuLimit && (now - lastCpuAlertMs > ALERT_COOLDOWN_MS)) {
-                            lastCpuAlertMs = now
-                            NotificationHelper.showHardwareAlert(
-                                context = context,
-                                deviceId = queriedId,
-                                title = "$devName · CPU High",
-                                message = "CPU package temperature is ${cpuTemp.toInt()}°C (exceeds ${cpuLimit.toInt()}°C threshold)"
-                            )
-                            Log.w(TAG, "Hardware Alert triggered: CPU $cpuTemp°C > $cpuLimit°C")
-                        }
-
-                        // 3. GPU Temperature Evaluation
-                        val gpuTemp = liveStats.gpu?.temperature ?: 0f
-                        if (liveStats.gpu != null && gpuTemp > gpuLimit && (now - lastGpuAlertMs > ALERT_COOLDOWN_MS)) {
-                            lastGpuAlertMs = now
-                            NotificationHelper.showHardwareAlert(
-                                context = context,
-                                deviceId = queriedId,
-                                title = "$devName · GPU High",
-                                message = "GPU temperature is ${gpuTemp.toInt()}°C (exceeds ${gpuLimit.toInt()}°C threshold)"
-                            )
-                            Log.w(TAG, "Hardware Alert triggered: GPU $gpuTemp°C > $gpuLimit°C")
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error evaluating hardware thresholds: ${e.message}")
-                    }
+        // Update device in state:
+        _devices.value = _devices.value.map { device ->
+            if (device.id == queriedId) {
+                val online = when {
+                    isDeviceOnline == true -> true
+                    isDeviceOnline == false -> false
+                    device.lastSeen > 0L && (now - device.lastSeen < 180000L) -> device.isOnline
+                    else -> false
                 }
+                val effectiveLastSeen = if (snapshotTs > 0L) snapshotTs else device.lastSeen
+                val stats = if (liveStats != null) {
+                    liveStats.copy(
+                        gpu = liveStats.gpu ?: device.hardwareStats.gpu,
+                        battery = liveStats.battery ?: device.hardwareStats.battery,
+                        disks = liveStats.disks.ifEmpty { device.hardwareStats.disks },
+                        usage = if (liveStats.usage.uptimeSeconds > 0) liveStats.usage else device.hardwareStats.usage
+                    )
+                } else if (online) {
+                    device.hardwareStats
+                } else {
+                    createEmptyHardwareStats()
+                }
+                device.copy(
+                    hardwareStats = device.gate(stats),
+                    isOnline = online,
+                    lastSeen = effectiveLastSeen
+                )
+            } else {
+                device
+            }
+        }
+
+        // Evaluate hardware thresholds in real-time and fire heads-up notifications
+        if (liveStats != null && context != null && userPreferencesRepository != null) {
+            try {
+                val cpuLimit = userPreferencesRepository.getDeviceCpuThreshold(queriedId).first()
+                val gpuLimit = userPreferencesRepository.getDeviceGpuThreshold(queriedId).first()
+                val ramLimit = userPreferencesRepository.getDeviceRamThreshold(queriedId).first()
+
+                val currentDevice = _devices.value.find { it.id == queriedId }
+                val devName = currentDevice?.name ?: "Primary PC"
+
+                // 1. RAM Usage Evaluation
+                val ramPct = liveStats.ram.usagePercent
+                if (ramPct > ramLimit && (now - lastRamAlertMs > ALERT_COOLDOWN_MS)) {
+                    lastRamAlertMs = now
+                    NotificationHelper.showHardwareAlert(
+                        context = context,
+                        deviceId = queriedId,
+                        title = "$devName · RAM High",
+                        message = "RAM usage is ${ramPct.toInt()}% (exceeds ${ramLimit.toInt()}% threshold)"
+                    )
+                    Log.w(TAG, "Hardware Alert triggered: RAM $ramPct% > $ramLimit%")
+                }
+
+                // 2. CPU Temperature Evaluation
+                val cpuTemp = liveStats.cpu.packageTemperature
+                if (cpuTemp > cpuLimit && (now - lastCpuAlertMs > ALERT_COOLDOWN_MS)) {
+                    lastCpuAlertMs = now
+                    NotificationHelper.showHardwareAlert(
+                        context = context,
+                        deviceId = queriedId,
+                        title = "$devName · CPU High",
+                        message = "CPU package temperature is ${cpuTemp.toInt()}°C (exceeds ${cpuLimit.toInt()}°C threshold)"
+                    )
+                    Log.w(TAG, "Hardware Alert triggered: CPU $cpuTemp°C > $cpuLimit°C")
+                }
+
+                // 3. GPU Temperature Evaluation
+                val gpuTemp = liveStats.gpu?.temperature ?: 0f
+                if (liveStats.gpu != null && gpuTemp > gpuLimit && (now - lastGpuAlertMs > ALERT_COOLDOWN_MS)) {
+                    lastGpuAlertMs = now
+                    NotificationHelper.showHardwareAlert(
+                        context = context,
+                        deviceId = queriedId,
+                        title = "$devName · GPU High",
+                        message = "GPU temperature is ${gpuTemp.toInt()}°C (exceeds ${gpuLimit.toInt()}°C threshold)"
+                    )
+                    Log.w(TAG, "Hardware Alert triggered: GPU $gpuTemp°C > $gpuLimit°C")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error evaluating hardware thresholds: ${e.message}")
             }
         }
     }

@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -80,6 +81,15 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showAlertSheet by remember { mutableStateOf(false) }
+
+    // While this list is on screen every paired computer streams live data, not only the one
+    // whose page was opened last.
+    val listRepo = (androidx.compose.ui.platform.LocalContext.current.applicationContext
+        as com.pcmonitor.app.PCMonitorApplication).deviceRepository
+    DisposableEffect(Unit) {
+        listRepo.setListVisible(true)
+        onDispose { listRepo.setListVisible(false) }
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     Box(

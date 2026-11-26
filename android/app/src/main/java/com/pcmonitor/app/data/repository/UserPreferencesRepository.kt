@@ -41,7 +41,7 @@ class UserPreferencesRepository(private val context: Context) {
                 )
             }
             open("vitals_encrypted_session").also { it.adoptLegacySession(LEGACY_ENCRYPTED_PREFS) { open(LEGACY_ENCRYPTED_PREFS) } }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             context.getSharedPreferences("vitals_session_fallback", Context.MODE_PRIVATE).also {
                 it.adoptLegacySession(LEGACY_FALLBACK_PREFS) {
                     context.getSharedPreferences(LEGACY_FALLBACK_PREFS, Context.MODE_PRIVATE)
@@ -72,20 +72,34 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    private val _sessionToken = MutableStateFlow<String?>(encryptedPrefs.getString("auth_token", null))
+    private val _sessionToken = MutableStateFlow<String?>(getSessionToken())
     val sessionToken: Flow<String?> = _sessionToken.asStateFlow()
 
-    fun getSessionToken(): String? {
-        return encryptedPrefs.getString("auth_token", null)
+    // A stored value the keystore can no longer decrypt (key lost after a restore or a lock-screen
+    // change) throws on read. That used to crash the app at start: treat it as signed out instead.
+    fun getSessionToken(): String? = try {
+        encryptedPrefs.getString("auth_token", null)
+    } catch (t: Throwable) {
+        android.util.Log.w("UserPreferencesRepo", "Stored session unreadable; signing out locally", t)
+        try { encryptedPrefs.edit().remove("auth_token").apply() } catch (_: Throwable) {}
+        null
     }
 
     fun saveSessionToken(token: String) {
-        encryptedPrefs.edit().putString("auth_token", token).apply()
+        try {
+            encryptedPrefs.edit().putString("auth_token", token).apply()
+        } catch (t: Throwable) {
+            android.util.Log.e("UserPreferencesRepo", "Could not save the session", t)
+        }
         _sessionToken.value = token
     }
 
     fun clearSessionToken() {
-        encryptedPrefs.edit().remove("auth_token").apply()
+        try {
+            encryptedPrefs.edit().remove("auth_token").apply()
+        } catch (t: Throwable) {
+            android.util.Log.e("UserPreferencesRepo", "Could not clear the session", t)
+        }
         _sessionToken.value = null
     }
 
@@ -315,8 +329,12 @@ class UserPreferencesRepository(private val context: Context) {
                     "mutation", "devices:registerPushToken",
                     JSONObject().put("token", token).put("fcmToken", fcmToken.trim()).put("phoneModel", phoneModel)
                 )
-                httpClient.newCall(req).execute().close()
-                android.util.Log.i("UserPreferencesRepo", "Synced FCM push token to Convex for user")
+                val body = httpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
+                if (JSONObject(body.ifBlank { "{}" }).optString("status") == "success") {
+                    android.util.Log.i("UserPreferencesRepo", "Synced FCM push token to Convex for user")
+                } else {
+                    android.util.Log.w("UserPreferencesRepo", "Convex rejected the FCM push token: $body")
+                }
             } catch (e: Exception) {
                 android.util.Log.e("UserPreferencesRepo", "Failed to sync FCM push token to Convex: ${e.message}")
             }

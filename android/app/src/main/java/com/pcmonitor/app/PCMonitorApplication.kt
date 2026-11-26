@@ -44,21 +44,26 @@ class PCMonitorApplication : Application() {
         alertRepository = MockAlertRepository(devRepo, userPreferencesRepository)
         historyRepository = MockHistoryRepository(userPreferencesRepository)
 
-        // Fetch current FCM token
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val token = task.result
-                Log.i("VitalsApplication", "FCM Registration Token: $token")
-                CoroutineScope(Dispatchers.IO).launch {
-                    userPreferencesRepository.setFcmToken(token)
-                    val email = userPreferencesRepository.userEmail.first()
-                    if (email.isNotBlank()) {
-                        userPreferencesRepository.syncPushTokenToConvex(email, token)
+        // Fetch current FCM token. Guarded: a build without a usable Firebase config throws here,
+        // and that must cost push alerts, not crash the app at every start.
+        try {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val token = task.result
+                    Log.i("VitalsApplication", "FCM Registration Token: $token")
+                    CoroutineScope(Dispatchers.IO).launch {
+                        userPreferencesRepository.setFcmToken(token)
+                        val email = userPreferencesRepository.userEmail.first()
+                        if (email.isNotBlank()) {
+                            userPreferencesRepository.syncPushTokenToConvex(email, token)
+                        }
                     }
+                } else {
+                    Log.w("VitalsApplication", "Failed to fetch FCM registration token", task.exception)
                 }
-            } else {
-                Log.w("VitalsApplication", "Failed to fetch FCM registration token", task.exception)
             }
+        } catch (t: Throwable) {
+            Log.w("VitalsApplication", "Firebase Messaging unavailable; push alerts are off", t)
         }
 
         // Keep the home-screen widget in step with the app's device list (at most every 30 s).

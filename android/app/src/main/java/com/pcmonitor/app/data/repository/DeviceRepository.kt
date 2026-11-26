@@ -10,6 +10,13 @@ interface DeviceRepository {
     fun getDevice(deviceId: String): Flow<Device?>
     /** The device whose screen is open: it gets live (1 s) data; the others refresh every 15 s. */
     fun setActiveDevice(deviceId: String)
+    /** The device's screen closed: stop polling it every second (no-op if another one is open now). */
+    fun clearActiveDevice(deviceId: String)
+    /**
+     * A device list (Home, Devices) is on screen: every paired computer streams live data while
+     * at least one list is visible. Calls are counted, so each `true` needs a matching `false`.
+     */
+    fun setListVisible(visible: Boolean)
     suspend fun addDevice(device: Device)
     suspend fun removeDevice(deviceId: String)
     suspend fun updateDeviceStats(deviceId: String, stats: HardwareStats)
