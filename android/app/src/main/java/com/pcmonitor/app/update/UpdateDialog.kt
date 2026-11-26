@@ -1,9 +1,6 @@
 package com.pcmonitor.app.update
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,20 +54,8 @@ fun UpdateDialog() {
         is UpdateState.Failed -> AlertDialog(
             onDismissRequest = AppUpdater::dismiss,
             title = { Text("Update didn't finish") },
-            text = { Text("${s.message}\n\nYou can tap Try Again or download directly in your mobile browser.") },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = AppUpdater::dismiss) { Text("Later") }
-                    TextButton(onClick = {
-                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(s.release.apkUrl))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(browserIntent)
-                        AppUpdater.dismiss()
-                    }) {
-                        Text("Open in Browser")
-                    }
-                }
-            },
+            text = { Text(s.message) },
+            dismissButton = { TextButton(onClick = AppUpdater::dismiss) { Text("Later") } },
             confirmButton = {
                 TextButton(onClick = { AppUpdater.startUpdate(context, s.release) }) {
                     Text("Try again")

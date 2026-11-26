@@ -653,10 +653,7 @@ html.real .toast { bottom: 12px; }
      not installed. Error correction H (30%) is what lets the logo cover the middle. */
   const LOGO = new Image();
   LOGO.src = "logo.png";
-  // Until the agent sends a real pairing link (the "pair" event), the QR points at the Vitals
-  // website, where the app can be downloaded. Never a made-up link: people scan whatever is shown.
-  const SITE_URL = "https://vitals.dpdns.org";
-  let qrUrl = REAL ? SITE_URL : "https://example.convex.site/pair?code=K7QM2D"; // the simulation keeps its demo code
+  let qrUrl = "https://example.convex.site/pair?code=K7QM2D"; // the prototype's example
   function drawPairQR(url) {
     qrUrl = url;
     if (typeof qrcode !== "function") return;

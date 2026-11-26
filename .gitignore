@@ -22,7 +22,7 @@ docs/*
 .env*
 *.keystore
 *.jks
-!android/app/google-services.json
+google-services.json
 config.toml
 help
 agent/dev.toml

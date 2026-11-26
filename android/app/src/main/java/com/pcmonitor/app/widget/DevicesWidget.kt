@@ -70,34 +70,30 @@ class DevicesWidget : AppWidgetProvider() {
         }
 
         fun render(context: Context, devices: List<Device>) {
-            try {
-                val manager = AppWidgetManager.getInstance(context)
-                val ids = manager.getAppWidgetIds(ComponentName(context, DevicesWidget::class.java))
-                if (ids.isEmpty()) return
-                val sorted = devices.sortedWith(compareBy({ it.problem() == null }, { !it.isOnline }, { it.name.lowercase() }))
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(ComponentName(context, DevicesWidget::class.java))
+            if (ids.isEmpty()) return
+            val sorted = devices.sortedWith(compareBy({ it.problem() == null }, { !it.isOnline }, { it.name.lowercase() }))
 
-                for (id in ids) {
-                    val views = if (Build.VERSION.SDK_INT >= 31) {
-                        // The launcher picks the biggest layout that fits the widget's current size.
-                        RemoteViews(
-                            mapOf(
-                                SizeF(150f, 40f) to compact(context, sorted),
-                                SizeF(150f, 110f) to build(context, sorted, 1),
-                                SizeF(150f, 190f) to build(context, sorted, 2),
-                                SizeF(150f, 280f) to build(context, sorted, 3)
-                            )
+            for (id in ids) {
+                val views = if (Build.VERSION.SDK_INT >= 31) {
+                    // The launcher picks the biggest layout that fits the widget's current size.
+                    RemoteViews(
+                        mapOf(
+                            SizeF(150f, 40f) to compact(context, sorted),
+                            SizeF(150f, 110f) to build(context, sorted, 1),
+                            SizeF(150f, 190f) to build(context, sorted, 2),
+                            SizeF(150f, 280f) to build(context, sorted, 3)
                         )
-                    } else {
-                        val h = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 180)
-                        when {
-                            h < 110 -> compact(context, sorted)
-                            else -> build(context, sorted, when { h >= 280 -> 3; h >= 190 -> 2; else -> 1 })
-                        }
+                    )
+                } else {
+                    val h = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 180)
+                    when {
+                        h < 110 -> compact(context, sorted)
+                        else -> build(context, sorted, when { h >= 280 -> 3; h >= 190 -> 2; else -> 1 })
                     }
-                    manager.updateAppWidget(id, views)
                 }
-            } catch (t: Throwable) {
-                android.util.Log.w("DevicesWidget", "Widget render failed: ${t.message}", t)
+                manager.updateAppWidget(id, views)
             }
         }
 
@@ -198,20 +194,16 @@ class DevicesWidget : AppWidgetProvider() {
 
         /** Text in the app's pixel font, as a bitmap (RemoteViews can't use bundled fonts). */
         private fun pixelText(context: Context, text: String, sizeSp: Float, color: Int): Bitmap {
-            return try {
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.press_start_2p)
-                    textSize = sizeSp * context.resources.displayMetrics.scaledDensity
-                    this.color = color
-                }
-                val fm = paint.fontMetrics
-                val w = paint.measureText(text).toInt().coerceAtLeast(1) + 2
-                val h = (fm.descent - fm.ascent).toInt().coerceAtLeast(1)
-                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
-                    Canvas(it).drawText(text, 1f, -fm.ascent, paint)
-                }
-            } catch (t: Throwable) {
-                Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.press_start_2p)
+                textSize = sizeSp * context.resources.displayMetrics.scaledDensity
+                this.color = color
+            }
+            val fm = paint.fontMetrics
+            val w = paint.measureText(text).toInt().coerceAtLeast(1) + 2
+            val h = (fm.descent - fm.ascent).toInt().coerceAtLeast(1)
+            return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
+                Canvas(it).drawText(text, 1f, -fm.ascent, paint)
             }
         }
 

@@ -39,10 +39,6 @@ class HomeViewModel(
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
-    init {
-        refresh()
-    }
-
     val uiState: StateFlow<HomeUiState> = combine(
         deviceRepository.devices,
         alertRepository.alerts,

@@ -46,10 +46,8 @@ object AppUpdater {
     private const val MAX_APK_BYTES = 200L * 1024 * 1024
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
     /** Outlives the dialog, so rotating the phone or a theme change does not cancel a download. */
@@ -66,38 +64,6 @@ object AppUpdater {
         _state.value = UpdateState.Idle
     }
 
-    /** Compares two semantic version strings ("1.1.1" vs "1.1.0"). Returns > 0 if a > b. */
-    fun compareVersions(a: String, b: String): Int {
-        val parse = { s: String -> s.split(".").map { it.filter(Char::isDigit).toIntOrNull() ?: 0 } }
-        val x = parse(a)
-        val y = parse(b)
-        val maxLen = maxOf(x.size, y.size)
-        for (i in 0 until maxLen) {
-            val xi = x.getOrElse(i) { 0 }
-            val yi = y.getOrElse(i) { 0 }
-            if (xi != yi) return xi.compareTo(yi)
-        }
-        return 0
-    }
-
-    /**
-     * Determines whether an in-app update should be prompted.
-     * The release must have a strictly newer semver than installedVersion (if installedVersion is known)
-     * AND releaseCode must be greater than installedCode.
-     */
-    fun isUpdateNeeded(
-        releaseVersion: String,
-        releaseCode: Long,
-        installedVersion: String?,
-        installedCode: Long
-    ): Boolean {
-        val installedVer = installedVersion?.trim().orEmpty()
-        if (installedVer.isNotBlank() && compareVersions(releaseVersion, installedVer) <= 0) {
-            return false
-        }
-        return releaseCode > installedCode
-    }
-
     /** Asks the backend for the published app; shows the dialog if it is newer than this build. */
     suspend fun check(context: Context) {
         if (dismissedThisSession || _state.value !is UpdateState.Idle) return
@@ -105,9 +71,8 @@ object AppUpdater {
         val installed = context.packageManager.getPackageInfo(context.packageName, 0)
         val installedCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) installed.longVersionCode
             else @Suppress("DEPRECATION") installed.versionCode.toLong()
-        val installedVer = installed.versionName ?: ""
-        if (isUpdateNeeded(release.version, release.versionCode, installedVer, installedCode)) {
-            _state.value = UpdateState.Available(release, if (installedVer.isNotBlank()) installedVer else "?")
+        if (release.versionCode > installedCode) {
+            _state.value = UpdateState.Available(release, installed.versionName ?: "?")
         }
     }
 
@@ -164,50 +129,36 @@ object AppUpdater {
 
     private suspend fun download(context: Context, release: AppRelease): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() } // old downloads
         val out = File(dir, "vitals-${release.version}.apk")
-
-        var lastError: Exception? = null
-        for (attempt in 1..3) {
-            dir.listFiles()?.forEach { it.delete() } // clean previous attempts
-            val digest = MessageDigest.getInstance("SHA-256")
-            try {
-                http.newCall(Request.Builder().url(release.apkUrl).build()).execute().use { resp ->
-                    if (!resp.isSuccessful) error("Download failed (HTTP ${resp.code})")
-                    val body = resp.body ?: error("Empty download")
-                    val total = body.contentLength()
-                    if (total > MAX_APK_BYTES) error("Download is too large")
-                    var read = 0L
-                    body.byteStream().use { input ->
-                        out.outputStream().use { output ->
-                            val buf = ByteArray(64 * 1024)
-                            while (true) {
-                                val n = input.read(buf)
-                                if (n < 0) break
-                                read += n
-                                if (read > MAX_APK_BYTES) error("Download is too large")
-                                digest.update(buf, 0, n)
-                                output.write(buf, 0, n)
-                                if (total > 0) _state.value = UpdateState.Downloading(release, read.toFloat() / total)
-                            }
-                        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        http.newCall(Request.Builder().url(release.apkUrl).build()).execute().use { resp ->
+            if (!resp.isSuccessful) error("Download failed (HTTP ${resp.code})")
+            val body = resp.body ?: error("Empty download")
+            val total = body.contentLength()
+            if (total > MAX_APK_BYTES) error("Download is too large")
+            var read = 0L
+            body.byteStream().use { input ->
+                out.outputStream().use { output ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        read += n
+                        if (read > MAX_APK_BYTES) error("Download is too large")
+                        digest.update(buf, 0, n)
+                        output.write(buf, 0, n)
+                        if (total > 0) _state.value = UpdateState.Downloading(release, read.toFloat() / total)
                     }
-                }
-                val hash = digest.digest().joinToString("") { "%02x".format(it) }
-                if (hash != release.sha256) {
-                    out.delete()
-                    error("The download was damaged or tampered with. Try again.")
-                }
-                return@withContext out
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                lastError = e
-                out.delete()
-                if (attempt < 3) {
-                    kotlinx.coroutines.delay(1500L)
                 }
             }
         }
-        throw lastError ?: Exception("Download failed after 3 attempts")
+        val hash = digest.digest().joinToString("") { "%02x".format(it) }
+        if (hash != release.sha256) {
+            out.delete()
+            error("The download was damaged or tampered with. Try again.")
+        }
+        out
     }
 
     private suspend fun install(context: Context, apk: File) = withContext(Dispatchers.IO) {

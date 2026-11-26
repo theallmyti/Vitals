@@ -58,29 +58,19 @@ class AuthViewModel(
         generalError = null
 
         viewModelScope.launch {
-            try {
-                val result = authRepository.login(
-                    LoginRequest(email = loginEmail.trim(), password = loginPassword)
-                )
-                isLoading = false
-                result.fold(
-                    onSuccess = { user ->
-                        try {
-                            preferencesRepository.saveUserInfo(user.id, user.name, user.email)
-                        } catch (t: Throwable) {
-                            android.util.Log.e("AuthViewModel", "Failed to save user info: ${t.message}", t)
-                        }
-                        onSuccess()
-                    },
-                    onFailure = { error ->
-                        generalError = error.message ?: "Authentication failed."
-                    }
-                )
-            } catch (t: Throwable) {
-                isLoading = false
-                android.util.Log.e("AuthViewModel", "Unexpected error during login: ${t.message}", t)
-                generalError = t.message ?: "Something went wrong. Please try again."
-            }
+            val result = authRepository.login(
+                LoginRequest(email = loginEmail.trim(), password = loginPassword)
+            )
+            isLoading = false
+            result.fold(
+                onSuccess = { user ->
+                    preferencesRepository.saveUserInfo(user.id, user.name, user.email)
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    generalError = error.message ?: "Authentication failed."
+                }
+            )
         }
     }
 
@@ -96,36 +86,27 @@ class AuthViewModel(
         generalError = null
 
         viewModelScope.launch {
-            try {
-                val result = authRepository.register(
-                    RegisterRequest(
-                        name = registerName.trim(),
-                        email = registerEmail.trim(),
-                        password = registerPassword,
-                        turnstileToken = token
-                    )
+            val result = authRepository.register(
+                RegisterRequest(
+                    name = registerName.trim(),
+                    email = registerEmail.trim(),
+                    password = registerPassword,
+                    turnstileToken = token
                 )
-                isLoading = false
-                // The token was spent on this attempt (or is unusable): get a fresh one.
-                turnstileToken = null
-                turnstileResetSignal++
-                result.fold(
-                    onSuccess = { user ->
-                        try {
-                            preferencesRepository.saveUserInfo(user.id, user.name, user.email)
-                        } catch (t: Throwable) {
-                            android.util.Log.e("AuthViewModel", "Failed to save user info: ${t.message}", t)
-                        }
-                        onSuccess()
-                    },
-                    onFailure = { error ->
-                        generalError = error.message ?: "Registration failed."
-                    }
-                )
-            } catch (t: Throwable) {
-                isLoading = false
-                generalError = t.message ?: "Registration failed."
-            }
+            )
+            isLoading = false
+            // The token was spent on this attempt (or is unusable): get a fresh one.
+            turnstileToken = null
+            turnstileResetSignal++
+            result.fold(
+                onSuccess = { user ->
+                    preferencesRepository.saveUserInfo(user.id, user.name, user.email)
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    generalError = error.message ?: "Registration failed."
+                }
+            )
         }
     }
 

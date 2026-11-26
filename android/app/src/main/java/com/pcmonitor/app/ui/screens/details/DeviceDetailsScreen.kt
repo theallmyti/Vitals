@@ -22,13 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
@@ -87,7 +82,6 @@ import com.pcmonitor.app.ui.theme.OnlineGreen
 import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.PixelGreen
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
-import kotlin.math.roundToInt
 import com.pcmonitor.app.ui.theme.TextDarkGray
 import com.pcmonitor.app.ui.theme.TextWhite
 
@@ -499,13 +493,13 @@ private fun OverviewSection(
     var gpuHistory by remember(device.id) { mutableStateOf<List<Float>>(emptyList()) }
 
     // 1. CPU Temperature Card (Cream card with brown border & green sparkline)
-    val cpuTemp = if (stats.cpu.packageTemperature > 0f) stats.cpu.packageTemperature else stats.cpu.averageTemperature
-    val cpuStr = if (isOnline && cpuTemp > 0f && !cpuTemp.isNaN() && !cpuTemp.isInfinite()) {
-        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).safeRoundToInt()}°F" else "${cpuTemp.safeRoundToInt()}°C"
+    val cpuTemp = stats.cpu.averageTemperature
+    val cpuStr = if (isOnline && cpuTemp > 0f) {
+        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F" else "${cpuTemp.toInt()}°C"
     } else "--"
 
     LaunchedEffect(cpuTemp, isOnline) {
-        if (isOnline && cpuTemp > 0f && !cpuTemp.isNaN() && !cpuTemp.isInfinite()) {
+        if (isOnline && cpuTemp > 0f) {
             cpuHistory = if (cpuHistory.isEmpty()) listOf(cpuTemp) else (cpuHistory + cpuTemp).takeLast(20)
         }
     }
@@ -523,12 +517,12 @@ private fun OverviewSection(
     // 2. GPU Temperature Card (if GPU available or when offline)
     if (stats.gpu != null || !isOnline) {
         val gpuTemp = stats.gpu?.temperature ?: 0f
-        val gpuStr = if (isOnline && gpuTemp > 0f && !gpuTemp.isNaN() && !gpuTemp.isInfinite()) {
-            if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).safeRoundToInt()}°F" else "${gpuTemp.safeRoundToInt()}°C"
+        val gpuStr = if (isOnline && gpuTemp > 0f) {
+            if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F" else "${gpuTemp.toInt()}°C"
         } else "--"
 
         LaunchedEffect(gpuTemp, isOnline) {
-            if (isOnline && gpuTemp > 0f && !gpuTemp.isNaN() && !gpuTemp.isInfinite()) {
+            if (isOnline && gpuTemp > 0f) {
                 gpuHistory = if (gpuHistory.isEmpty()) listOf(gpuTemp) else (gpuHistory + gpuTemp).takeLast(20)
             }
         }
@@ -544,11 +538,10 @@ private fun OverviewSection(
     }
 
     // 3. RAM Usage Card
-    val ramPct = stats.ram.usagePercent
-    val ramPercent = if (isOnline && !ramPct.isNaN() && !ramPct.isInfinite()) ramPct.safeRoundToInt() else 0
+    val ramPercent = if (isOnline) stats.ram.usagePercent.toInt() else 0
     val ramMainValue = if (isOnline && ramPercent > 0) "$ramPercent%" else "--"
     val ramSubValue = if (isOnline && stats.ram.totalMb > 0) "${formatGb(stats.ram.usedMb)} / ${formatGb(stats.ram.totalMb)}" else "Device offline"
-    val ramProgress = if (isOnline && !ramPct.isNaN() && !ramPct.isInfinite()) ramPct / 100f else 0f
+    val ramProgress = if (isOnline) stats.ram.usagePercent / 100f else 0f
     CreamBarMetricCard(
         icon = Icons.Default.Memory,
         title = "RAM Usage",
@@ -559,75 +552,21 @@ private fun OverviewSection(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // 4. Battery Card (if present) — tappable header shows %, chevron expands full detail
+    // 4. Battery Card (if present)
     if (stats.battery != null) {
-        var batteryExpanded by remember { mutableStateOf(false) }
         val bPct = if (isOnline) "${stats.battery.percentage}%" else "--"
         val bSub = if (isOnline) {
             if (stats.battery.isCharging) "Charging (${stats.battery.powerRateWatts}W)" else "Discharging"
         } else "Device offline"
         val bProg = if (isOnline) stats.battery.percentage / 100f else 0f
-
-        // Tappable header row: Battery icon, label, pct, chevron
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(CreamSurface)
-                .border(1.dp, CreamBorder, RoundedCornerShape(8.dp))
-                .clickable { batteryExpanded = !batteryExpanded }
-                .padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.BatteryFull,
-                contentDescription = null,
-                tint = CreamText,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Battery",
-                fontFamily = PixelFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-                color = CreamText,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = bPct,
-                fontFamily = PixelFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = if (isOnline) CreamGreenAccent else CreamTextSecondary
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Icon(
-                imageVector = if (batteryExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = if (batteryExpanded) "Collapse battery" else "Expand battery",
-                tint = CreamTextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        // Expandable full battery detail
-        AnimatedVisibility(
-            visible = batteryExpanded,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            Column {
-                Spacer(modifier = Modifier.height(8.dp))
-                CreamBarMetricCard(
-                    icon = Icons.Default.BatteryFull,
-                    title = "Battery Detail",
-                    mainValue = bPct,
-                    subValue = bSub,
-                    progress = bProg,
-                    higherIsBetter = true
-                )
-            }
-        }
+        CreamBarMetricCard(
+            icon = Icons.Default.BatteryFull,
+            title = "Battery",
+            mainValue = bPct,
+            subValue = bSub,
+            progress = bProg,
+            higherIsBetter = true
+        )
         Spacer(modifier = Modifier.height(12.dp))
     }
 
@@ -831,12 +770,10 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean,
         Spacer(modifier = Modifier.height(8.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val pkgTemp = cpu.packageTemperature
-            val pkgTempStr = if (isOnline && pkgTemp > 0f && !pkgTemp.isNaN() && !pkgTemp.isInfinite()) {
-                if (useFahrenheit) "${(pkgTemp * 9f / 5f + 32).safeRoundToInt()}°F" else "${pkgTemp.safeRoundToInt()}°C"
+            val pkgTempStr = if (isOnline && cpu.packageTemperature > 0f) {
+                if (useFahrenheit) "${(cpu.packageTemperature * 9f / 5f + 32).toInt()}°F" else "${cpu.packageTemperature.toInt()}°C"
             } else "--"
-            val cpuLoad = cpu.totalUtilization
-            val loadStr = if (isOnline && cpuLoad >= 0f && !cpuLoad.isNaN() && !cpuLoad.isInfinite()) "${cpuLoad.safeRoundToInt()}%" else "--"
+            val loadStr = if (isOnline) "${cpu.totalUtilization.toInt()}%" else "--"
             val clockStr = if (isOnline && cpu.clockSpeedMhz > 0f) {
                 String.format(java.util.Locale.US, "%.1f GHz", cpu.clockSpeedMhz / 1000f)
             } else "--"
@@ -1351,9 +1288,4 @@ private fun PeopleWithAccessCard(viewModel: DeviceDetailsViewModel) {
             }
         }
     }
-}
-
-private fun Float.safeRoundToInt(fallback: Int = 0): Int {
-    if (isNaN() || isInfinite()) return fallback
-    return roundToInt()
 }
