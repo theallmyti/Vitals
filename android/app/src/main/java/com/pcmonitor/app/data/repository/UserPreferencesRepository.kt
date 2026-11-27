@@ -103,6 +103,29 @@ class UserPreferencesRepository(private val context: Context) {
         _sessionToken.value = null
     }
 
+    // Alerts swiped away on this phone. The server has no per-alert delete, so without this they
+    // came back on the next sync after an app restart. Ids are unique, so the set is kept across
+    // sign-outs; it is trimmed to the newest entries to stay small.
+    private val alertStatePrefs by lazy {
+        context.getSharedPreferences("vitals_alert_state", Context.MODE_PRIVATE)
+    }
+
+    fun dismissedAlertIds(): Set<String> = try {
+        alertStatePrefs.getString("dismissed_ids", "").orEmpty().split(',').filter { it.isNotBlank() }.toSet()
+    } catch (t: Throwable) {
+        emptySet()
+    }
+
+    fun addDismissedAlertId(alertId: String) {
+        try {
+            val list = alertStatePrefs.getString("dismissed_ids", "").orEmpty()
+                .split(',').filter { it.isNotBlank() && it != alertId } + alertId
+            alertStatePrefs.edit().putString("dismissed_ids", list.takeLast(500).joinToString(",")).apply()
+        } catch (t: Throwable) {
+            android.util.Log.w("UserPreferencesRepo", "Could not save dismissed alert", t)
+        }
+    }
+
     companion object {
         private const val LEGACY_ENCRYPTED_PREFS = "nexus_encrypted_session"
         private const val LEGACY_FALLBACK_PREFS = "nexus_session_fallback"

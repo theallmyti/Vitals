@@ -56,3 +56,24 @@ jobs:
         run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+
+  android:
+    name: Android (unit tests + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      # No secrets: build.gradle.kts writes a placeholder google-services.json and Gradle signs
+      # with a throwaway debug key. This only proves the app compiles and its tests pass;
+      # release.yml builds the APK that ships.
+      - name: Unit tests and debug build
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug

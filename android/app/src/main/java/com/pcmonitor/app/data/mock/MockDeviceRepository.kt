@@ -182,10 +182,11 @@ class MockDeviceRepository(
                         caps?.has("hasBattery") == true && !caps.optBoolean("hasBattery") -> DeviceType.DESKTOP
                         else -> DeviceType.LAPTOP
                     }
-                    val lastSeen = item.optLong("lastSeenAt", item.optLong("lastSeen", 0L))
-
                     val latestObj = item.optJSONObject("latest")
                     val latestTs = latestObj?.optLong("ts", 0L) ?: 0L
+                    // "Updated Xs ago" must follow the newest data shown. lastSeenAt only moves with
+                    // the per-minute summary, so live readings said "updated 51 s ago" while changing.
+                    val lastSeen = maxOf(item.optLong("lastSeenAt", item.optLong("lastSeen", 0L)), latestTs)
                     val now = System.currentTimeMillis()
                     val isOnline = item.optBoolean("online", false) ||
                         (latestTs > 0L && (now - latestTs) < 45000L) ||

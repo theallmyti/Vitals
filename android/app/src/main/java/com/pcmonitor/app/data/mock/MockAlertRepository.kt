@@ -36,7 +36,9 @@ class MockAlertRepository(
     private var activeUserEmail: String = ""
     // The server has no per-alert delete: alerts dismissed on this phone are hidden locally so the
     // 15 s sync does not bring them back. Read state is kept across syncs the same way.
-    private val dismissedIds = mutableSetOf<String>()
+    private val dismissedIds: MutableSet<String> = java.util.Collections.synchronizedSet(
+        (userPreferencesRepository?.dismissedAlertIds() ?: emptySet()).toMutableSet()
+    )
     private val readIds = mutableSetOf<String>()
 
     // Zero fake alerts: starts completely empty
@@ -63,7 +65,6 @@ class MockAlertRepository(
                 }.collect { (loggedIn, email) ->
                     if (!loggedIn || email.isBlank()) {
                         activeUserEmail = ""
-                        dismissedIds.clear()
                         readIds.clear()
                         _alerts.value = emptyList()
                     } else {
@@ -220,6 +221,7 @@ class MockAlertRepository(
 
     override suspend fun clearAlert(alertId: String) {
         dismissedIds += alertId
+        userPreferencesRepository?.addDismissedAlertId(alertId)
         _alerts.value = _alerts.value.filter { it.id != alertId }
     }
 

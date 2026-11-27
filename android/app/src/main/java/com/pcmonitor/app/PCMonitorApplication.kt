@@ -66,15 +66,15 @@ class PCMonitorApplication : Application() {
             Log.w("VitalsApplication", "Firebase Messaging unavailable; push alerts are off", t)
         }
 
-        // Keep the home-screen widget in step with the app's device list (at most every 30 s).
+        // Keep the home-screen widget in step with the app's device list (at most every 5 s, so it
+        // follows the live numbers while the app is open; in the background it refreshes every
+        // 15 min through DevicesWidget.RefreshWorker, the shortest period Android allows).
         CoroutineScope(Dispatchers.Default).launch {
-            // Redraw right away when the list changes size (first load, pairing, unpairing),
-            // otherwise at most every 30 s for the live numbers.
             var lastAt = 0L
             var lastCount = -1
             devRepo.devices.collect { list ->
                 val now = android.os.SystemClock.elapsedRealtime()
-                if (list.size != lastCount || now - lastAt >= 30_000L) {
+                if (list.size != lastCount || now - lastAt >= 5_000L) {
                     lastAt = now
                     lastCount = list.size
                     com.pcmonitor.app.widget.DevicesWidget.render(this@PCMonitorApplication, list)
