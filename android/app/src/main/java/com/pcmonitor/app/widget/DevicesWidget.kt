@@ -69,7 +69,17 @@ class DevicesWidget : AppWidgetProvider() {
                 .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, req)
         }
 
+        // A widget that fails to draw (e.g. bitmaps over the launcher's RemoteViews memory limit)
+        // must never take the app down with it: this runs inside the app's process.
         fun render(context: Context, devices: List<Device>) {
+            try {
+                renderUnsafe(context, devices)
+            } catch (t: Throwable) {
+                android.util.Log.w("DevicesWidget", "Widget render failed", t)
+            }
+        }
+
+        private fun renderUnsafe(context: Context, devices: List<Device>) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, DevicesWidget::class.java))
             if (ids.isEmpty()) return

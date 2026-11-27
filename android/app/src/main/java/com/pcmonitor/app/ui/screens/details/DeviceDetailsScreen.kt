@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -95,6 +96,12 @@ fun DeviceDetailsScreen(
     val state by viewModel.uiState.collectAsState()
     val device = state.device
     var showUnpairDialog by remember { mutableStateOf(false) }
+
+    // Poll this device every second only while its page is on screen.
+    DisposableEffect(Unit) {
+        viewModel.onScreenVisible()
+        onDispose { viewModel.onScreenHidden() }
+    }
 
     Box(
         modifier = Modifier
