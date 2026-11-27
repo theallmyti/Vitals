@@ -368,10 +368,11 @@ export const updateThresholds = mutation({
           .first();
 
     const patch: any = {};
-    if (args.cpuTempC !== undefined) patch.cpuTempC = args.cpuTempC;
-    if (args.gpuTempC !== undefined) patch.gpuTempC = args.gpuTempC;
-    if (args.ramPct !== undefined) patch.ramPct = args.ramPct;
-    if (args.diskFreePct !== undefined) patch.diskFreePct = args.diskFreePct;
+    // Whole numbers: the app's sliders send floats like 80.6387, which then showed up in alerts.
+    if (args.cpuTempC !== undefined) patch.cpuTempC = Math.round(args.cpuTempC);
+    if (args.gpuTempC !== undefined) patch.gpuTempC = Math.round(args.gpuTempC);
+    if (args.ramPct !== undefined) patch.ramPct = Math.round(args.ramPct);
+    if (args.diskFreePct !== undefined) patch.diskFreePct = Math.round(args.diskFreePct);
 
     if (existing) {
       await ctx.db.patch(existing._id, patch);
@@ -478,9 +479,9 @@ export const setDiskThreshold = mutation({
     if (args.minFreePct === null) {
       if (existing) await ctx.db.delete(existing._id);
     } else if (existing) {
-      await ctx.db.patch(existing._id, { minFreePct: args.minFreePct });
+      await ctx.db.patch(existing._id, { minFreePct: Math.round(args.minFreePct) });
     } else {
-      await ctx.db.insert("diskThresholds", { deviceId: args.deviceId, drive, minFreePct: args.minFreePct });
+      await ctx.db.insert("diskThresholds", { deviceId: args.deviceId, drive, minFreePct: Math.round(args.minFreePct) });
     }
     return { success: true };
   },

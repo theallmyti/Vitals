@@ -146,19 +146,19 @@ export const dispatchAlertPush = internalAction({
     switch (alert.type) {
       case "cpuTemp":
         title = `${deviceName} · CPU Temperature High`;
-        body = `CPU reached ${Math.round(alert.value ?? 0)}°C (threshold: ${alert.threshold}°C)`;
+        body = `CPU reached ${Math.round(alert.value ?? 0)}°C (limit: ${Math.round(alert.threshold ?? 0)}°C)`;
         break;
       case "gpuTemp":
         title = `${deviceName} · GPU Temperature High`;
-        body = `GPU reached ${Math.round(alert.value ?? 0)}°C (threshold: ${alert.threshold}°C)`;
+        body = `GPU reached ${Math.round(alert.value ?? 0)}°C (limit: ${Math.round(alert.threshold ?? 0)}°C)`;
         break;
       case "ram":
         title = `${deviceName} · RAM Usage High`;
-        body = `Memory utilization reached ${Math.round(alert.value ?? 0)}% (threshold: ${alert.threshold}%)`;
+        body = `Memory use reached ${Math.round(alert.value ?? 0)}% (limit: ${Math.round(alert.threshold ?? 0)}%)`;
         break;
       case "disk":
         title = `${deviceName} · Low Disk Space (${alert.drive ?? "Drive"})`;
-        body = `Free space dropped to ${Math.round(alert.value ?? 0)}% (threshold: ${alert.threshold}%)`;
+        body = `Only ${Math.round(alert.value ?? 0)}% free. You get this alert when free space is below ${Math.round(alert.threshold ?? 0)}% (change it in Alert settings).`;
         break;
     }
 
