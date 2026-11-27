@@ -183,3 +183,25 @@ test("a shared computer alerts the owner and everyone it is shared with, each on
   await push(t, HOT);
   expect(await t.query(api.devices.getMyAlerts, { token: otherToken })).toHaveLength(3);
 });
+
+test("disk alerts repeat once a day, not every 15 minutes; limits are saved as whole numbers", async () => {
+  const t = convexTest(schema, modules);
+  const { token } = await userWithDevice(t);
+  await t.mutation(api.devices.updateThresholds, { token, diskFreePct: 30.4977, ramPct: 80.6387 });
+  const low = withDisks([{ name: "C:\\", freeGB: 82, freePct: 19 }]);
+
+  await push(t, low);
+  let alerts = await t.query(api.devices.getMyAlerts, { token });
+  expect(alerts.map((a) => [a.type, a.threshold])).toEqual([["disk", 30]]);
+
+  // 16 minutes later the drive is still low: no new alert (it used to repeat every 15 minutes).
+  vi.advanceTimersByTime(16 * 60 * 1000);
+  await push(t, low);
+  expect(await t.query(api.devices.getMyAlerts, { token })).toHaveLength(1);
+
+  // A day later it alerts again.
+  vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+  await push(t, low);
+  alerts = await t.query(api.devices.getMyAlerts, { token });
+  expect(alerts.filter((a) => a.type === "disk")).toHaveLength(2);
+});

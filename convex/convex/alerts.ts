@@ -17,6 +17,9 @@ export type Thresholds = typeof DEFAULT_THRESHOLDS;
 
 // FR-48: at most one alert per device and type every 15 minutes.
 export const ALERT_COOLDOWN_MS = 15 * 60 * 1000;
+// Free disk space changes slowly: a drive under its limit stays there for days, so repeating the
+// alert every 15 minutes was only noise. One alert per drive per day.
+export const DISK_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const ALERT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type AlertType = "cpuTemp" | "gpuTemp" | "ram";
@@ -142,12 +145,12 @@ async function evaluateFor(ctx: MutationCtx, device: Doc<"devices">, userId: Id<
     raised++;
   }
 
-  // Disks: one cooldown per drive.
+  // Disks: one alert per drive per day (DISK_ALERT_COOLDOWN_MS).
   for (const d of await diskBreaches(ctx, userId, device._id, s.disks ?? [])) {
     const recent = await ctx.db
       .query("alerts")
       .withIndex("by_device_type_time", (q) =>
-        q.eq("deviceId", device._id).eq("type", "disk").gt("createdAt", now - ALERT_COOLDOWN_MS),
+        q.eq("deviceId", device._id).eq("type", "disk").gt("createdAt", now - DISK_ALERT_COOLDOWN_MS),
       )
       .filter((q) => q.eq(q.field("userId"), userId))
       .collect();

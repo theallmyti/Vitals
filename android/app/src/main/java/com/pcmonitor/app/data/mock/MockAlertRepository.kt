@@ -153,25 +153,25 @@ class MockAlertRepository(
                     AlertSeverity.CRITICAL,
                     AlertCategory.CPU_TEMP,
                     "CPU Temperature Critical",
-                    "CPU package temperature reached ${value.toInt()}°C (threshold: ${threshold.toInt()}°C)."
+                    "CPU temperature is ${Math.round(value)}°C, above your ${Math.round(threshold)}°C limit."
                 )
                 "gpuTemp" -> Quadruple(
                     AlertSeverity.WARNING,
                     AlertCategory.GPU_TEMP,
                     "GPU Temperature High",
-                    "GPU temperature reached ${value.toInt()}°C (threshold: ${threshold.toInt()}°C)."
+                    "GPU temperature is ${Math.round(value)}°C, above your ${Math.round(threshold)}°C limit."
                 )
                 "ram" -> Quadruple(
                     AlertSeverity.WARNING,
                     AlertCategory.RAM_USAGE,
                     "RAM Usage High",
-                    "System RAM utilization reached ${value.toInt()}% (threshold: ${threshold.toInt()}%)."
+                    "Memory utilization is above ${Math.round(threshold)}%."
                 )
                 "disk" -> Quadruple(
                     AlertSeverity.WARNING,
                     AlertCategory.DISK_SPACE,
                     "Disk Space Low",
-                    "Drive ${obj.optString("drive").ifBlank { "?" }} is down to ${value.toInt()}% free (threshold: ${threshold.toInt()}%)."
+                    "Drive ${obj.optString("drive").ifBlank { "?" }} has less than ${Math.round(threshold)}% free space (${Math.round(value)}% left)."
                 )
                 "offline" -> Quadruple(
                     AlertSeverity.OFFLINE,
