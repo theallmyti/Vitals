@@ -146,7 +146,10 @@ class DevicesWidget : AppWidgetProvider() {
             )
             views.setTextViewText(R.id.widget_summary, summary(devices))
             val more = devices.size - cards
-            val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date())
+            // The time of the newest reading shown, not of this redraw: in the background the
+            // numbers can be older than the 15-minute refresh that drew them.
+            val newest = devices.maxOfOrNull { it.lastSeen }?.takeIf { it > 0L } ?: System.currentTimeMillis()
+            val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(newest))
             views.setTextViewText(R.id.widget_updated, if (more > 0) "+$more more · updated $time" else "Updated $time")
 
             views.setOnClickPendingIntent(R.id.widget_root, openApp(context))

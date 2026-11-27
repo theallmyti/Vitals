@@ -17,9 +17,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -163,14 +168,18 @@ fun AlertsScreen(
             } else {
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(state.filteredAlerts, key = { it.id }) { alert ->
-                        AlertItem(
-                            alert = alert,
-                            onClick = {
-                                viewModel.markAsRead(alert.id)
-                                onAlertClick(alert.id)
-                            },
+                        SwipeToRemoveAlert(
+                            onRemove = { viewModel.clearAlert(alert.id) },
                             modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                        ) {
+                            AlertItem(
+                                alert = alert,
+                                onClick = {
+                                    viewModel.markAsRead(alert.id)
+                                    onAlertClick(alert.id)
+                                }
+                            )
+                        }
                     }
                     item {
                         Spacer(modifier = Modifier.height(16.dp))
@@ -181,3 +190,59 @@ fun AlertsScreen(
     }
 }
 
+
+/** Swipe an alert to the left to remove it; a red "REMOVE" strip shows underneath while dragging. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToRemoveAlert(
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onRemove()
+                true
+            } else {
+                false
+            }
+        },
+        // Half the card's width, so a scroll that drifts sideways doesn't remove anything.
+        positionalThreshold = { totalDistance -> totalDistance * 0.5f }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = modifier,
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CriticalRed)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "REMOVE",
+                        fontFamily = PixelFontFamily,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextWhite
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Remove alert",
+                        tint = TextWhite
+                    )
+                }
+            }
+        }
+    ) {
+        content()
+    }
+}
